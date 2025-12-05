@@ -151,6 +151,233 @@ curl -X POST http://localhost:3000/api/myfxbook/login \
   }'
 ```
 
+**Response (Success):**
+```json
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "success": true,
+    "session": "DSL07vu14QxHWErTIAFrH40",
+    "message": "Myfxbook authentication successful"
+  }
+}
+```
+
+### Logout Endpoint
+
+Invalidate your session token and logout from Myfxbook API:
+
+```bash
+curl -X POST http://localhost:3000/api/myfxbook/logout \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session": "DSL07vu14QxHWErTIAFrH40"
+  }'
+```
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "message": "Logout successful",
+  "data": {
+    "error": false,
+    "message": "Session successfully closed"
+  }
+}
+```
+
+**Response (Failure):**
+```json
+{
+  "success": false,
+  "message": "Logout failed",
+  "data": {
+    "error": true,
+    "message": "Failed to logout: Invalid session."
+  }
+}
+```
+
+### Get My Accounts
+
+Retrieve all trading accounts associated with your session:
+
+```bash
+# GET request with session token
+curl "http://localhost:3000/api/myfxbook/get-my-accounts?session=YOUR_SESSION_TOKEN"
+```
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "message": "Accounts retrieved successfully",
+  "data": {
+    "error": false,
+    "accounts": [
+      {
+        "id": 12345,
+        "name": "My Trading Account",
+        "broker": "OANDA",
+        "currency": "USD",
+        "balance": 10000.00,
+        "equity": 10500.00,
+        "gain": 25.50,
+        "profit": 2550.00,
+        "drawdown": 5.2,
+        "totalTrades": 150,
+        "creationDate": "2024-01-01",
+        "lastUpdateDate": "2024-12-01",
+        "isActive": true
+      }
+    ]
+  }
+}
+```
+
+### Get Trade History
+
+Retrieve complete trade history for a specific account:
+
+```bash
+# GET request with session token and account ID
+curl "http://localhost:3000/api/myfxbook/get-history?session=YOUR_SESSION_TOKEN&id=12345"
+```
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "message": "Trade history retrieved successfully",
+  "data": {
+    "error": false,
+    "history": [
+      {
+        "id": 123456789,
+        "orderId": 987654321,
+        "action": "buy",
+        "symbol": "EURUSD",
+        "lots": 0.1,
+        "openPrice": 1.1850,
+        "closePrice": 1.1900,
+        "openTime": "2024-01-01 10:00:00",
+        "closeTime": "2024-01-01 15:00:00",
+        "profit": 50.00,
+        "pips": 50,
+        "comment": "Trade comment",
+        "commission": 0.50,
+        "swap": -0.25,
+        "sl": 1.1800,
+        "tp": 1.1950,
+        "magic": 12345
+      }
+    ],
+    "pageNumber": 1,
+    "totalPages": 10
+  }
+}
+```
+
+### Get Gain Data
+
+Retrieve gain/performance data for a specific account:
+
+```bash
+# GET request with query parameters
+curl "http://localhost:3000/api/myfxbook/get-gain?session=YOUR_SESSION_TOKEN&id=12345&start=2024-01-01&end=2024-12-31"
+
+# POST request with body parameters
+curl -X POST http://localhost:3000/api/myfxbook/get-gain \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session": "YOUR_SESSION_TOKEN",
+    "id": "12345",
+    "start": "2024-01-01",
+    "end": "2024-12-31"
+  }'
+```
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "message": "Gain data retrieved successfully",
+  "data": {
+    "error": false,
+    "data": [
+      {
+        "date": "2024-01-01",
+        "gain": 5.25,
+        "balance": 10525.50
+      },
+      {
+        "date": "2024-01-02",
+        "gain": 5.80,
+        "balance": 10580.00
+      }
+    ],
+    "totalGain": 25.50
+  }
+}
+```
+
+### Get Daily Gain Data
+
+Retrieve daily gain/performance data for a specific account:
+
+```bash
+# GET request with query parameters
+curl "http://localhost:3000/api/myfxbook/get-daily-gain?session=YOUR_SESSION_TOKEN&id=12345&start=2000-01-01&end=2010-01-01"
+```
+
+**Parameters:**
+- `session` (required): Session token obtained from the login endpoint
+- `id` (required): Account ID from Myfxbook
+- `start` (required): Start date in format YYYY-MM-DD
+- `end` (required): End date in format YYYY-MM-DD
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "message": "Daily gain data retrieved successfully",
+  "data": {
+    "error": false,
+    "data": [
+      {
+        "date": "2000-01-01",
+        "gain": 0.0,
+        "balance": 10000.00
+      },
+      {
+        "date": "2000-01-02",
+        "gain": 1.25,
+        "balance": 10125.00
+      },
+      {
+        "date": "2000-01-03",
+        "gain": 1.50,
+        "balance": 10150.00
+      }
+    ]
+  }
+}
+```
+
+**Response (Failure):**
+```json
+{
+  "success": false,
+  "message": "Failed to fetch daily gain data",
+  "data": {
+    "error": true,
+    "message": "Failed to fetch daily gain data: Invalid session."
+  }
+}
+```
+
 ## 🧪 Running Tests
 
 ```bash
@@ -209,8 +436,12 @@ All API endpoints are prefixed with `/api`
 #### Myfxbook Endpoints
 
 - `GET /api/myfxbook/test-auth` - Test authentication using env variables
-- `POST /api/myfxbook/test-auth` - Test authentication with provided credentials
 - `POST /api/myfxbook/login` - Login and get session token
+- `POST /api/myfxbook/logout` - Logout and invalidate session token
+- `GET /api/myfxbook/get-my-accounts` - Get user's trading accounts
+- `GET /api/myfxbook/get-history` - Get trade history for an account
+- `GET /api/myfxbook/get-gain` - Get gain data with query parameters
+- `GET /api/myfxbook/get-daily-gain` - Get daily gain data for a specific date range
 
 ## 🔒 Environment Variables
 

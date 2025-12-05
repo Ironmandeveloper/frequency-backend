@@ -47,7 +47,10 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document, {
     swaggerOptions: {
       persistAuthorization: true,
+      filter: true,
+      displayRequestDuration: true,
     },
+    customSiteTitle: 'Frequency Backend API Docs',
   });
 
   const port = process.env.PORT || 3000;

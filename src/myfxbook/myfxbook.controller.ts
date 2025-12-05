@@ -6,12 +6,13 @@ import {
   HttpCode,
   HttpStatus,
   HttpException,
+  Query,
 } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
-  ApiResponse,
   ApiBody,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { MyfxbookService } from './myfxbook.service';
 import { LoginDto } from './dto/login.dto';
@@ -25,56 +26,6 @@ export class MyfxbookController {
 
   @Get('test-auth')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Test Myfxbook authentication',
-    description:
-      'Tests Myfxbook authentication using credentials from environment variables (MYFXBOOK_EMAIL and MYFXBOOK_PASSWORD). Returns session token if successful.',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Authentication test completed',
-    type: BaseResponseDto,
-    schema: {
-      example: {
-        success: true,
-        message: 'Authentication test passed',
-        data: {
-          success: true,
-          session: 'abc123xyz789',
-          message: 'Myfxbook authentication successful',
-        },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Missing credentials in environment variables',
-    schema: {
-      example: {
-        success: false,
-        message: 'Authentication test failed',
-        data: {
-          success: false,
-          message:
-            'Myfxbook credentials are required. Please set MYFXBOOK_EMAIL and MYFXBOOK_PASSWORD in your .env file or provide them in the request.',
-        },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'Authentication failed - invalid credentials',
-    schema: {
-      example: {
-        success: false,
-        message: 'Authentication test failed',
-        data: {
-          success: false,
-          message: 'Myfxbook authentication failed: Invalid credentials',
-        },
-      },
-    },
-  })
   async testAuthentication(): Promise<
     BaseResponseDto<TestAuthResponseDto>
   > {
@@ -95,51 +46,6 @@ export class MyfxbookController {
       'Authenticates with Myfxbook API and returns a session token. Uses provided credentials or falls back to environment variables.',
   })
   @ApiBody({ type: LoginDto, required: false })
-  @ApiResponse({
-    status: 200,
-    description: 'Login successful',
-    type: BaseResponseDto,
-    schema: {
-      example: {
-        success: true,
-        message: 'Login successful',
-        data: {
-          success: true,
-          session: 'abc123xyz789',
-          message: 'Myfxbook authentication successful',
-        },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Invalid request body or missing credentials',
-    schema: {
-      example: {
-        success: false,
-        message: 'Login failed',
-        data: {
-          success: false,
-          message:
-            'Myfxbook credentials are required. Please set MYFXBOOK_EMAIL and MYFXBOOK_PASSWORD in your .env file or provide them in the request.',
-        },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'Authentication failed - invalid credentials',
-    schema: {
-      example: {
-        success: false,
-        message: 'Login failed',
-        data: {
-          success: false,
-          message: 'Myfxbook authentication failed: Invalid credentials',
-        },
-      },
-    },
-  })
   async login(
     @Body() loginDto?: LoginDto,
   ): Promise<BaseResponseDto<TestAuthResponseDto>> {
@@ -168,6 +74,409 @@ export class MyfxbookController {
             : 'Login failed',
       };
       return new BaseResponseDto(false, result, 'Login failed');
+    }
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Logout from Myfxbook API',
+    description:
+      'Invalidates the current session token and logs out from Myfxbook API. The session token will no longer be valid after logout.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        session: {
+          type: 'string',
+          description: 'Session token to invalidate',
+          example: 'DSL07vu14QxHWErTIAFrH40',
+        },
+      },
+      required: ['session'],
+    },
+  })
+  async logout(
+    @Body('session') session: string,
+  ): Promise<BaseResponseDto<any>> {
+    try {
+      if (!session || session === 'undefined' || session === 'null' || !session.trim()) {
+        throw new HttpException(
+          'Session token is required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      const trimmedSession = session.trim();
+      const decoded = decodeURIComponent(trimmedSession);
+      const result = await this.myfxbookService.logout(decoded);
+
+      return new BaseResponseDto(
+        true,
+        result,
+        'Logout successful',
+      );
+    } catch (error) {
+      const errorData = {
+        error: true,
+        message:
+          error instanceof HttpException
+            ? error.message
+            : 'Failed to logout',
+      };
+      return new BaseResponseDto(false, errorData, 'Logout failed');
+    }
+  }
+
+  @Get('get-my-accounts')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get user Myfxbook accounts',
+    description:
+      'Retrieves all trading accounts associated with the authenticated user session. Requires a valid session token.',
+  })
+  @ApiQuery({
+    name: 'session',
+    required: true,
+    description: 'Session token obtained from the login endpoint',
+    type: String,
+    example: 'DSL07vu14QxHWErTIAFrH40',
+    schema: {
+      type: 'string',
+      minLength: 1,
+    },
+  })
+  async getMyAccounts(
+    @Query('session') session: string,
+  ): Promise<BaseResponseDto<any>> {
+    try {
+      // Validate and trim the session token
+      if (!session || session === 'undefined' || session === 'null' || !session.trim()) {
+        throw new HttpException(
+          'Session token is required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      const trimmedSession = session.trim();
+      const decoded = decodeURIComponent(trimmedSession);
+      const accounts = await this.myfxbookService.getMyAccounts(decoded);
+
+      return new BaseResponseDto(
+        true,
+        accounts,
+        'Accounts retrieved successfully',
+      );
+    } catch (error) {
+      const errorData = {
+        error: true,
+        message:
+          error instanceof HttpException
+            ? error.message
+            : 'Failed to fetch accounts',
+      };
+      return new BaseResponseDto(false, errorData, 'Failed to fetch accounts');
+    }
+  }
+
+  @Get('get-gain')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get gain data for a Myfxbook account',
+    description:
+      'Retrieves gain/performance data for a specific account between the specified date range. Requires session token, account ID, and date range.',
+  })
+  @ApiQuery({
+    name: 'session',
+    required: true,
+    description: 'Session token obtained from the login endpoint',
+    type: String,
+    example: 'DSL07vu14QxHWErTIAFrH40',
+    schema: { type: 'string', minLength: 1 },
+  })
+  @ApiQuery({
+    name: 'id',
+    required: true,
+    description: 'Account ID from Myfxbook',
+    type: String,
+    example: '12345',
+    schema: { type: 'string', minLength: 1 },
+  })
+  @ApiQuery({
+    name: 'start',
+    required: true,
+    description: 'Start date in format YYYY-MM-DD',
+    type: String,
+    example: '2024-01-01',
+    schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
+  })
+  @ApiQuery({
+    name: 'end',
+    required: true,
+    description: 'End date in format YYYY-MM-DD',
+    type: String,
+    example: '2024-12-31',
+    schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
+  })
+  async getGain(
+    @Query('session') session: string,
+    @Query('id') accountId: string,
+    @Query('start') startDate: string,
+    @Query('end') endDate: string,
+  ): Promise<BaseResponseDto<any>> {
+    try {
+      // Validate and trim parameters
+      if (!session || session === 'undefined' || session === 'null' || !session.trim()) {
+        throw new HttpException(
+          'Session token is required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      const trimmedSession = session.trim();
+      const decoded = decodeURIComponent(trimmedSession);
+
+      const gainData = await this.myfxbookService.getGain(
+        decoded,
+        accountId,
+        startDate,
+        endDate,
+      );
+      return new BaseResponseDto(
+        true,
+        gainData,
+        'Gain data retrieved successfully',
+      );
+    } catch (error) {
+      const errorData = {
+        error: true,
+        message:
+          error instanceof HttpException
+            ? error.message
+            : 'Failed to fetch gain data',
+      };
+      return new BaseResponseDto(false, errorData, 'Failed to fetch gain data');
+    }
+  }
+
+  @Get('get-daily-gain')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get daily gain data for a Myfxbook account',
+    description:
+      'Retrieves daily gain/performance data for a specific account between the specified date range. Requires session token, account ID, and date range.',
+  })
+  @ApiQuery({
+    name: 'session',
+    required: true,
+    description: 'Session token obtained from the login endpoint',
+    type: String,
+    example: 'DSL07vu14QxHWErTIAFrH40',
+    schema: { type: 'string', minLength: 1 },
+  })
+  @ApiQuery({
+    name: 'id',
+    required: true,
+    description: 'Account ID from Myfxbook',
+    type: String,
+    example: '12345',
+    schema: { type: 'string', minLength: 1 },
+  })
+  @ApiQuery({
+    name: 'start',
+    required: true,
+    description: 'Start date in format YYYY-MM-DD (e.g., 2000-01-01)',
+    type: String,
+    example: '2000-01-01',
+    schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
+  })
+  @ApiQuery({
+    name: 'end',
+    required: true,
+    description: 'End date in format YYYY-MM-DD (e.g., 2010-01-01)',
+    type: String,
+    example: '2010-01-01',
+    schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
+  })
+  async getDailyGain(
+    @Query('session') session: string,
+    @Query('id') accountId: string,
+    @Query('start') startDate: string,
+    @Query('end') endDate: string,
+  ): Promise<BaseResponseDto<any>> {
+    try {
+      // Validate and trim parameters
+      if (!session || session === 'undefined' || session === 'null' || !session.trim()) {
+        throw new HttpException(
+          'Session token is required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      const trimmedSession = session.trim();
+      const decoded = decodeURIComponent(trimmedSession);
+
+      const dailyGainData = await this.myfxbookService.getDailyGain(
+        decoded,
+        accountId,
+        startDate,
+        endDate,
+      );
+      return new BaseResponseDto(
+        true,
+        dailyGainData,
+        'Daily gain data retrieved successfully',
+      );
+    } catch (error) {
+      const errorData = {
+        error: true,
+        message:
+          error instanceof HttpException
+            ? error.message
+            : 'Failed to fetch daily gain data',
+      };
+      return new BaseResponseDto(false, errorData, 'Failed to fetch daily gain data');
+    }
+  }
+
+  @Get('get-history')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get trade history for a Myfxbook account',
+    description:
+      'Retrieves the complete trade history for a specific account. Requires session token and account ID.',
+  })
+  @ApiQuery({
+    name: 'session',
+    required: true,
+    description: 'Session token obtained from the login endpoint',
+    type: String,
+    example: 'DSL07vu14QxHWErTIAFrH40',
+    schema: { type: 'string', minLength: 1 },
+  })
+  @ApiQuery({
+    name: 'id',
+    required: true,
+    description: 'Account ID from Myfxbook',
+    type: String,
+    example: '12345',
+    schema: { type: 'string', minLength: 1 },
+  })
+  async getHistory(
+    @Query('session') session: string,
+    @Query('id') accountId: string,
+  ): Promise<BaseResponseDto<any>> {
+    try {
+      // Validate and trim parameters
+      if (!session || session === 'undefined' || session === 'null' || !session.trim()) {
+        throw new HttpException(
+          'Session token is required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      const trimmedSession = session.trim();
+      const decoded = decodeURIComponent(trimmedSession);
+
+      const history = await this.myfxbookService.getHistory(
+        decoded,
+        accountId,
+      );
+      return new BaseResponseDto(
+        true,
+        history,
+        'Trade history retrieved successfully',
+      );
+    } catch (error) {
+      const errorData = {
+        error: true,
+        message:
+          error instanceof HttpException
+            ? error.message
+            : 'Failed to fetch trade history',
+      };
+      return new BaseResponseDto(
+        false,
+        errorData,
+        'Failed to fetch trade history',
+      );
+    }
+  }
+
+  @Get('get-data-daily')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get daily data for a Myfxbook account',
+    description:
+      'Retrieves daily data for a specific account between the specified date range. This endpoint provides comprehensive daily statistics including balance, equity, and other account metrics.',
+  })
+  @ApiQuery({
+    name: 'session',
+    required: true,
+    description: 'Session token obtained from the login endpoint',
+    type: String,
+    example: 'DSL07vu14QxHWErTIAFrH40',
+    schema: { type: 'string', minLength: 1 },
+  })
+  @ApiQuery({
+    name: 'id',
+    required: true,
+    description: 'Account ID from Myfxbook',
+    type: String,
+    example: '12345',
+    schema: { type: 'string', minLength: 1 },
+  })
+  @ApiQuery({
+    name: 'start',
+    required: true,
+    description: 'Start date in format YYYY-MM-DD',
+    type: String,
+    example: '2000-01-01',
+    schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
+  })
+  @ApiQuery({
+    name: 'end',
+    required: true,
+    description: 'End date in format YYYY-MM-DD',
+    type: String,
+    example: '2010-01-01',
+    schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
+  })
+  async getDataDaily(
+    @Query('session') session: string,
+    @Query('id') accountId: string,
+    @Query('start') startDate: string,
+    @Query('end') endDate: string,
+  ): Promise<BaseResponseDto<any>> {
+    try {
+      // Validate and trim parameters
+      if (!session || session === 'undefined' || session === 'null' || !session.trim()) {
+        throw new HttpException(
+          'Session token is required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      const trimmedSession = session.trim();
+      const decoded = decodeURIComponent(trimmedSession);
+
+      const dataDailyData = await this.myfxbookService.getDataDaily(
+        decoded,
+        accountId,
+        startDate,
+        endDate,
+      );
+      return new BaseResponseDto(
+        true,
+        dataDailyData,
+        'Daily data retrieved successfully',
+      );
+    } catch (error) {
+      const errorData = {
+        error: true,
+        message:
+          error instanceof HttpException
+            ? error.message
+            : 'Failed to fetch daily data',
+      };
+      return new BaseResponseDto(false, errorData, 'Failed to fetch daily data');
     }
   }
 }
