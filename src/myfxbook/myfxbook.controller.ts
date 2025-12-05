@@ -18,6 +18,7 @@ import { MyfxbookService } from './myfxbook.service';
 import { LoginDto } from './dto/login.dto';
 import { BaseResponseDto } from '../common/dto/base-response.dto';
 import { TestAuthResponseDto } from './dto/test-auth-response.dto';
+import { validateAndDecodeSession } from '../common/utils/session.utils';
 
 @ApiTags('Myfxbook')
 @Controller('myfxbook')
@@ -101,15 +102,7 @@ export class MyfxbookController {
     @Body('session') session: string,
   ): Promise<BaseResponseDto<any>> {
     try {
-      if (!session || session === 'undefined' || session === 'null' || !session.trim()) {
-        throw new HttpException(
-          'Session token is required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-
-      const trimmedSession = session.trim();
-      const decoded = decodeURIComponent(trimmedSession);
+      const decoded = validateAndDecodeSession(session);
       const result = await this.myfxbookService.logout(decoded);
 
       return new BaseResponseDto(
@@ -151,16 +144,7 @@ export class MyfxbookController {
     @Query('session') session: string,
   ): Promise<BaseResponseDto<any>> {
     try {
-      // Validate and trim the session token
-      if (!session || session === 'undefined' || session === 'null' || !session.trim()) {
-        throw new HttpException(
-          'Session token is required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-
-      const trimmedSession = session.trim();
-      const decoded = decodeURIComponent(trimmedSession);
+      const decoded = validateAndDecodeSession(session);
       const accounts = await this.myfxbookService.getMyAccounts(decoded);
 
       return new BaseResponseDto(
@@ -226,15 +210,7 @@ export class MyfxbookController {
     @Query('end') endDate: string,
   ): Promise<BaseResponseDto<any>> {
     try {
-      // Validate and trim parameters
-      if (!session || session === 'undefined' || session === 'null' || !session.trim()) {
-        throw new HttpException(
-          'Session token is required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-      const trimmedSession = session.trim();
-      const decoded = decodeURIComponent(trimmedSession);
+      const decoded = validateAndDecodeSession(session);
 
       const gainData = await this.myfxbookService.getGain(
         decoded,
@@ -305,15 +281,7 @@ export class MyfxbookController {
     @Query('end') endDate: string,
   ): Promise<BaseResponseDto<any>> {
     try {
-      // Validate and trim parameters
-      if (!session || session === 'undefined' || session === 'null' || !session.trim()) {
-        throw new HttpException(
-          'Session token is required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-      const trimmedSession = session.trim();
-      const decoded = decodeURIComponent(trimmedSession);
+      const decoded = validateAndDecodeSession(session);
 
       const dailyGainData = await this.myfxbookService.getDailyGain(
         decoded,
@@ -366,15 +334,7 @@ export class MyfxbookController {
     @Query('id') accountId: string,
   ): Promise<BaseResponseDto<any>> {
     try {
-      // Validate and trim parameters
-      if (!session || session === 'undefined' || session === 'null' || !session.trim()) {
-        throw new HttpException(
-          'Session token is required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-      const trimmedSession = session.trim();
-      const decoded = decodeURIComponent(trimmedSession);
+      const decoded = validateAndDecodeSession(session);
 
       const history = await this.myfxbookService.getHistory(
         decoded,
@@ -447,15 +407,7 @@ export class MyfxbookController {
     @Query('end') endDate: string,
   ): Promise<BaseResponseDto<any>> {
     try {
-      // Validate and trim parameters
-      if (!session || session === 'undefined' || session === 'null' || !session.trim()) {
-        throw new HttpException(
-          'Session token is required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-      const trimmedSession = session.trim();
-      const decoded = decodeURIComponent(trimmedSession);
+      const decoded = validateAndDecodeSession(session);
 
       const dataDailyData = await this.myfxbookService.getDataDaily(
         decoded,
