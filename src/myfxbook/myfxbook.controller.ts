@@ -21,6 +21,7 @@ import { TestAuthResponseDto } from './dto/test-auth-response.dto';
 import { AggregatedAccountsDto } from './dto/aggregated-accounts.dto';
 import { TradeLengthDto } from './dto/trade-length.dto';
 import { BalanceProfitabilityDto } from './dto/balance-profitability.dto';
+import { GainComparisonDto } from './dto/gain-comparison.dto';
 import { validateAndDecodeSession } from '../common/utils/session.utils';
 
 @ApiTags('Myfxbook')
@@ -214,147 +215,6 @@ export class MyfxbookController {
     }
   }
 
-  // @Get('get-gain')
-  // @HttpCode(HttpStatus.OK)
-  // @ApiOperation({
-  //   summary: 'Get gain data for a Myfxbook account',
-  //   description:
-  //     'Retrieves gain/performance data for a specific account between the specified date range. Requires session token, account ID, and date range.',
-  // })
-  // @ApiQuery({
-  //   name: 'session',
-  //   required: true,
-  //   description: 'Session token obtained from the login endpoint',
-  //   type: String,
-  //   example: 'DSL07vu14QxHWErTIAFrH40',
-  //   schema: { type: 'string', minLength: 1 },
-  // })
-  // @ApiQuery({
-  //   name: 'id',
-  //   required: true,
-  //   description: 'Account ID from Myfxbook',
-  //   type: String,
-  //   example: '12345',
-  //   schema: { type: 'string', minLength: 1 },
-  // })
-  // @ApiQuery({
-  //   name: 'start',
-  //   required: true,
-  //   description: 'Start date in format YYYY-MM-DD',
-  //   type: String,
-  //   example: '2024-01-01',
-  //   schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
-  // })
-  // @ApiQuery({
-  //   name: 'end',
-  //   required: true,
-  //   description: 'End date in format YYYY-MM-DD',
-  //   type: String,
-  //   example: '2024-12-31',
-  //   schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
-  // })
-  // async getGain(
-  //   @Query('session') session: string,
-  //   @Query('id') accountId: string,
-  //   @Query('start') startDate: string,
-  //   @Query('end') endDate: string,
-  // ): Promise<BaseResponseDto<any>> {
-  //   try {
-  //     const decoded = validateAndDecodeSession(session);
-
-  //     const gainData = await this.myfxbookService.getGain(
-  //       decoded,
-  //       accountId,
-  //       startDate,
-  //       endDate,
-  //     );
-  //     return new BaseResponseDto(
-  //       true,
-  //       gainData,
-  //       'Gain data retrieved successfully',
-  //     );
-  //   } catch (error) {
-  //     const errorData = {
-  //       error: true,
-  //       message:
-  //         error instanceof HttpException
-  //           ? error.message
-  //           : 'Failed to fetch gain data',
-  //     };
-  //     return new BaseResponseDto(false, errorData, 'Failed to fetch gain data');
-  //   }
-  // }
-
-  // @Get('get-daily-gain')
-  // @HttpCode(HttpStatus.OK)
-  // @ApiOperation({
-  //   summary: 'Get daily gain data for a Myfxbook account',
-  //   description:
-  //     'Retrieves daily gain/performance data for a specific account between the specified date range. Requires session token, account ID, and date range.',
-  // })
-  // @ApiQuery({
-  //   name: 'session',
-  //   required: true,
-  //   description: 'Session token obtained from the login endpoint',
-  //   type: String,
-  //   example: 'DSL07vu14QxHWErTIAFrH40',
-  //   schema: { type: 'string', minLength: 1 },
-  // })
-  // @ApiQuery({
-  //   name: 'id',
-  //   required: true,
-  //   description: 'Account ID from Myfxbook',
-  //   type: String,
-  //   example: '12345',
-  //   schema: { type: 'string', minLength: 1 },
-  // })
-  // @ApiQuery({
-  //   name: 'start',
-  //   required: true,
-  //   description: 'Start date in format YYYY-MM-DD (e.g., 2000-01-01)',
-  //   type: String,
-  //   example: '2000-01-01',
-  //   schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
-  // })
-  // @ApiQuery({
-  //   name: 'end',
-  //   required: true,
-  //   description: 'End date in format YYYY-MM-DD (e.g., 2010-01-01)',
-  //   type: String,
-  //   example: '2010-01-01',
-  //   schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
-  // })
-  // async getDailyGain(
-  //   @Query('session') session: string,
-  //   @Query('id') accountId: string,
-  //   @Query('start') startDate: string,
-  //   @Query('end') endDate: string,
-  // ): Promise<BaseResponseDto<any>> {
-  //   try {
-  //     const decoded = validateAndDecodeSession(session);
-
-  //     const dailyGainData = await this.myfxbookService.getDailyGain(
-  //       decoded,
-  //       accountId,
-  //       startDate,
-  //       endDate,
-  //     );
-  //     return new BaseResponseDto(
-  //       true,
-  //       dailyGainData,
-  //       'Daily gain data retrieved successfully',
-  //     );
-  //   } catch (error) {
-  //     const errorData = {
-  //       error: true,
-  //       message:
-  //         error instanceof HttpException
-  //           ? error.message
-  //           : 'Failed to fetch daily gain data',
-  //     };
-  //     return new BaseResponseDto(false, errorData, 'Failed to fetch daily gain data');
-  //   }
-  // }
 
   @Get('get-history')
   @HttpCode(HttpStatus.OK)
@@ -414,7 +274,7 @@ export class MyfxbookController {
   @Get('get-average-trade-length')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Get average trade length from history',
+    summary: 'Get average trade length from history and total trades',
     description:
       'Calculates the average trade length (duration between openTime and closeTime) from the trade history. Returns average in milliseconds and human-readable format, along with total number of trades.',
   })
@@ -468,7 +328,7 @@ export class MyfxbookController {
   @Get('get-balance-profitability')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Get balance profitability between start and end dates',
+    summary: 'Get balance profitability and drawdown between start and end dates',
     description:
       'Calculates profitability based on balances at the provided start and end dates using daily data: (endBalance - startBalance) / startBalance. Returns start balance, end balance, profitability ratio, and percentage.',
   })
@@ -610,6 +470,60 @@ export class MyfxbookController {
             : 'Failed to fetch daily data',
       };
       return new BaseResponseDto(false, errorData, 'Failed to fetch daily data');
+    }
+  }
+
+  @Get('get-gain-comparisons')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get gain comparisons for multiple periods',
+    description:
+      'Retrieves gain data and comparisons for today vs yesterday, this week vs previous week, this month vs previous month, and this year vs previous year. Automatically calculates date ranges and differences.',
+  })
+  @ApiQuery({
+    name: 'session',
+    required: true,
+    description: 'Session token obtained from the login endpoint',
+    type: String,
+    example: 'DSL07vu14QxHWErTIAFrH40',
+    schema: { type: 'string', minLength: 1 },
+  })
+  @ApiQuery({
+    name: 'id',
+    required: true,
+    description: 'Account ID from Myfxbook',
+    type: String,
+    example: '12345',
+    schema: { type: 'string', minLength: 1 },
+  })
+  async getGainComparisons(
+    @Query('session') session: string,
+    @Query('id') accountId: string,
+  ): Promise<BaseResponseDto<GainComparisonDto | any>> {
+    try {
+      const decoded = validateAndDecodeSession(session);
+
+      const gainComparisons =
+        await this.myfxbookService.getGainComparisons(decoded, accountId);
+
+      return new BaseResponseDto(
+        true,
+        gainComparisons,
+        'Gain comparisons retrieved successfully',
+      );
+    } catch (error) {
+      const errorData = {
+        error: true,
+        message:
+          error instanceof HttpException
+            ? error.message
+            : 'Failed to fetch gain comparisons',
+      };
+      return new BaseResponseDto(
+        false,
+        errorData,
+        'Failed to fetch gain comparisons',
+      );
     }
   }
 }
