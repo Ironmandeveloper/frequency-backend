@@ -217,61 +217,6 @@ export class MyfxbookController {
   }
 
 
-  @Get('get-history')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Get trade history for a Myfxbook account',
-    description:
-      'Retrieves the complete trade history for a specific account. Requires session token and account ID.',
-  })
-  @ApiQuery({
-    name: 'session',
-    required: true,
-    description: 'Session token obtained from the login endpoint',
-    type: String,
-    example: 'DSL07vu14QxHWErTIAFrH40',
-    schema: { type: 'string', minLength: 1 },
-  })
-  @ApiQuery({
-    name: 'id',
-    required: true,
-    description: 'Account ID from Myfxbook',
-    type: String,
-    example: '12345',
-    schema: { type: 'string', minLength: 1 },
-  })
-  async getHistory(
-    @Query('session') session: string,
-    @Query('id') accountId: string,
-  ): Promise<BaseResponseDto<any>> {
-    try {
-      const decoded = validateAndDecodeSession(session);
-
-      const history = await this.myfxbookService.getHistory(
-        decoded,
-        accountId,
-      );
-      return new BaseResponseDto(
-        true,
-        history,
-        'Trade history retrieved successfully',
-      );
-    } catch (error) {
-      const errorData = {
-        error: true,
-        message:
-          error instanceof HttpException
-            ? error.message
-            : 'Failed to fetch trade history',
-      };
-      return new BaseResponseDto(
-        false,
-        errorData,
-        'Failed to fetch trade history',
-      );
-    }
-  }
-
   @Get('get-average-trade-length')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
