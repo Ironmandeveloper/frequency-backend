@@ -461,6 +461,164 @@ export class MyfxbookService {
   }
 
   /**
+   * Parse date string in format "MM/DD/YYYY HH:mm" to Date object
+   * @param dateString - Date string in format "MM/DD/YYYY HH:mm"
+   * @returns Date object or null if parsing fails
+   */
+  private parseDate(dateString: string): Date | null {
+    try {
+      // Format: "09/14/2024 18:24" -> MM/DD/YYYY HH:mm
+      const [datePart, timePart] = dateString.split(' ');
+      if (!datePart || !timePart) return null;
+
+      const [month, day, year] = datePart.split('/').map(Number);
+      const [hours, minutes] = timePart.split(':').map(Number);
+
+      if (
+        isNaN(month) ||
+        isNaN(day) ||
+        isNaN(year) ||
+        isNaN(hours) ||
+        isNaN(minutes)
+      ) {
+        return null;
+      }
+
+      return new Date(year, month - 1, day, hours, minutes);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Format milliseconds to human-readable string
+   * @param ms - Milliseconds
+   * @returns Formatted string like "1h 30m 15s"
+   */
+  private formatDuration(ms: number): string {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    const remainingHours = hours % 24;
+    const remainingMinutes = minutes % 60;
+    const remainingSeconds = seconds % 60;
+
+    const parts: string[] = [];
+    if (days > 0) parts.push(`${days}d`);
+    if (remainingHours > 0) parts.push(`${remainingHours}h`);
+    if (remainingMinutes > 0) parts.push(`${remainingMinutes}m`);
+    if (remainingSeconds > 0 || parts.length === 0)
+      parts.push(`${remainingSeconds}s`);
+
+    return parts.join(' ');
+  }
+
+  /**
+   * Get average trade length from history
+   * @param session - Session token
+   * @param accountId - Account ID
+   * @returns Average trade length statistics
+   */
+  async getAverageTradeLength(
+    session: string,
+    accountId: string,
+  ): Promise<{
+    averageTradeLengthMs: number;
+    averageTradeLengthFormatted: string;
+    totalTrades: number;
+  }> {
+    try {
+      this.validateSession(session);
+
+      if (!accountId) {
+        throw new HttpException(
+          'Account ID is required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      const historyResponse = await this.getHistory(session, accountId);
+      
+      // Try to find history records in different possible locations
+      let records: any[] = [];
+      
+      if (Array.isArray(historyResponse)) {
+        records = historyResponse;
+      } else if (Array.isArray((historyResponse as any).history)) {
+        records = (historyResponse as any).history;
+      } else if (Array.isArray((historyResponse as any).data)) {
+        records = (historyResponse as any).data;
+      } else if (Array.isArray((historyResponse as any).trades)) {
+        records = (historyResponse as any).trades;
+      } else if (
+        (historyResponse as any).data &&
+        typeof (historyResponse as any).data === 'object'
+      ) {
+        const dataObj = (historyResponse as any).data;
+        if (Array.isArray(dataObj.history)) {
+          records = dataObj.history;
+        } else if (Array.isArray(dataObj.trades)) {
+          records = dataObj.trades;
+        } else if (Array.isArray(dataObj.data)) {
+          records = dataObj.data;
+        }
+      }
+
+      if (!Array.isArray(records) || records.length === 0) {
+        return {
+          averageTradeLengthMs: 0,
+          averageTradeLengthFormatted: '0s',
+          totalTrades: 0,
+        };
+      }
+
+      let totalTradeLengthMs = 0;
+      let validTrades = 0;
+
+      records.forEach((record: any) => {
+        // Handle nested array structure if present
+        const trade = Array.isArray(record) ? record[0] : record;
+
+        if (!trade || !trade.openTime || !trade.closeTime) {
+          return;
+        }
+
+        const openTime = this.parseDate(trade.openTime);
+        const closeTime = this.parseDate(trade.closeTime);
+
+        if (openTime && closeTime) {
+          const tradeLength = closeTime.getTime() - openTime.getTime();
+          console.log("tradeLength",tradeLength)
+          if (tradeLength >= 0) {
+            // Only count valid trades (closeTime >= openTime)
+            totalTradeLengthMs += tradeLength;
+            validTrades++;
+          }
+        }
+      });
+
+      const averageTradeLengthMs =
+        validTrades > 0 ? totalTradeLengthMs / validTrades : 0;
+
+      return {
+        averageTradeLengthMs: Math.round(averageTradeLengthMs),
+        averageTradeLengthFormatted: this.formatDuration(averageTradeLengthMs),
+        totalTrades: records.length,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        `Failed to calculate average trade length: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
   * Get daily data for an account
   * @param session - Session token
   * @param accountId - Account ID

@@ -19,6 +19,7 @@ import { LoginDto } from './dto/login.dto';
 import { BaseResponseDto } from '../common/dto/base-response.dto';
 import { TestAuthResponseDto } from './dto/test-auth-response.dto';
 import { AggregatedAccountsDto } from './dto/aggregated-accounts.dto';
+import { TradeLengthDto } from './dto/trade-length.dto';
 import { validateAndDecodeSession } from '../common/utils/session.utils';
 
 @ApiTags('Myfxbook')
@@ -212,147 +213,147 @@ export class MyfxbookController {
     }
   }
 
-  @Get('get-gain')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Get gain data for a Myfxbook account',
-    description:
-      'Retrieves gain/performance data for a specific account between the specified date range. Requires session token, account ID, and date range.',
-  })
-  @ApiQuery({
-    name: 'session',
-    required: true,
-    description: 'Session token obtained from the login endpoint',
-    type: String,
-    example: 'DSL07vu14QxHWErTIAFrH40',
-    schema: { type: 'string', minLength: 1 },
-  })
-  @ApiQuery({
-    name: 'id',
-    required: true,
-    description: 'Account ID from Myfxbook',
-    type: String,
-    example: '12345',
-    schema: { type: 'string', minLength: 1 },
-  })
-  @ApiQuery({
-    name: 'start',
-    required: true,
-    description: 'Start date in format YYYY-MM-DD',
-    type: String,
-    example: '2024-01-01',
-    schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
-  })
-  @ApiQuery({
-    name: 'end',
-    required: true,
-    description: 'End date in format YYYY-MM-DD',
-    type: String,
-    example: '2024-12-31',
-    schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
-  })
-  async getGain(
-    @Query('session') session: string,
-    @Query('id') accountId: string,
-    @Query('start') startDate: string,
-    @Query('end') endDate: string,
-  ): Promise<BaseResponseDto<any>> {
-    try {
-      const decoded = validateAndDecodeSession(session);
+  // @Get('get-gain')
+  // @HttpCode(HttpStatus.OK)
+  // @ApiOperation({
+  //   summary: 'Get gain data for a Myfxbook account',
+  //   description:
+  //     'Retrieves gain/performance data for a specific account between the specified date range. Requires session token, account ID, and date range.',
+  // })
+  // @ApiQuery({
+  //   name: 'session',
+  //   required: true,
+  //   description: 'Session token obtained from the login endpoint',
+  //   type: String,
+  //   example: 'DSL07vu14QxHWErTIAFrH40',
+  //   schema: { type: 'string', minLength: 1 },
+  // })
+  // @ApiQuery({
+  //   name: 'id',
+  //   required: true,
+  //   description: 'Account ID from Myfxbook',
+  //   type: String,
+  //   example: '12345',
+  //   schema: { type: 'string', minLength: 1 },
+  // })
+  // @ApiQuery({
+  //   name: 'start',
+  //   required: true,
+  //   description: 'Start date in format YYYY-MM-DD',
+  //   type: String,
+  //   example: '2024-01-01',
+  //   schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
+  // })
+  // @ApiQuery({
+  //   name: 'end',
+  //   required: true,
+  //   description: 'End date in format YYYY-MM-DD',
+  //   type: String,
+  //   example: '2024-12-31',
+  //   schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
+  // })
+  // async getGain(
+  //   @Query('session') session: string,
+  //   @Query('id') accountId: string,
+  //   @Query('start') startDate: string,
+  //   @Query('end') endDate: string,
+  // ): Promise<BaseResponseDto<any>> {
+  //   try {
+  //     const decoded = validateAndDecodeSession(session);
 
-      const gainData = await this.myfxbookService.getGain(
-        decoded,
-        accountId,
-        startDate,
-        endDate,
-      );
-      return new BaseResponseDto(
-        true,
-        gainData,
-        'Gain data retrieved successfully',
-      );
-    } catch (error) {
-      const errorData = {
-        error: true,
-        message:
-          error instanceof HttpException
-            ? error.message
-            : 'Failed to fetch gain data',
-      };
-      return new BaseResponseDto(false, errorData, 'Failed to fetch gain data');
-    }
-  }
+  //     const gainData = await this.myfxbookService.getGain(
+  //       decoded,
+  //       accountId,
+  //       startDate,
+  //       endDate,
+  //     );
+  //     return new BaseResponseDto(
+  //       true,
+  //       gainData,
+  //       'Gain data retrieved successfully',
+  //     );
+  //   } catch (error) {
+  //     const errorData = {
+  //       error: true,
+  //       message:
+  //         error instanceof HttpException
+  //           ? error.message
+  //           : 'Failed to fetch gain data',
+  //     };
+  //     return new BaseResponseDto(false, errorData, 'Failed to fetch gain data');
+  //   }
+  // }
 
-  @Get('get-daily-gain')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Get daily gain data for a Myfxbook account',
-    description:
-      'Retrieves daily gain/performance data for a specific account between the specified date range. Requires session token, account ID, and date range.',
-  })
-  @ApiQuery({
-    name: 'session',
-    required: true,
-    description: 'Session token obtained from the login endpoint',
-    type: String,
-    example: 'DSL07vu14QxHWErTIAFrH40',
-    schema: { type: 'string', minLength: 1 },
-  })
-  @ApiQuery({
-    name: 'id',
-    required: true,
-    description: 'Account ID from Myfxbook',
-    type: String,
-    example: '12345',
-    schema: { type: 'string', minLength: 1 },
-  })
-  @ApiQuery({
-    name: 'start',
-    required: true,
-    description: 'Start date in format YYYY-MM-DD (e.g., 2000-01-01)',
-    type: String,
-    example: '2000-01-01',
-    schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
-  })
-  @ApiQuery({
-    name: 'end',
-    required: true,
-    description: 'End date in format YYYY-MM-DD (e.g., 2010-01-01)',
-    type: String,
-    example: '2010-01-01',
-    schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
-  })
-  async getDailyGain(
-    @Query('session') session: string,
-    @Query('id') accountId: string,
-    @Query('start') startDate: string,
-    @Query('end') endDate: string,
-  ): Promise<BaseResponseDto<any>> {
-    try {
-      const decoded = validateAndDecodeSession(session);
+  // @Get('get-daily-gain')
+  // @HttpCode(HttpStatus.OK)
+  // @ApiOperation({
+  //   summary: 'Get daily gain data for a Myfxbook account',
+  //   description:
+  //     'Retrieves daily gain/performance data for a specific account between the specified date range. Requires session token, account ID, and date range.',
+  // })
+  // @ApiQuery({
+  //   name: 'session',
+  //   required: true,
+  //   description: 'Session token obtained from the login endpoint',
+  //   type: String,
+  //   example: 'DSL07vu14QxHWErTIAFrH40',
+  //   schema: { type: 'string', minLength: 1 },
+  // })
+  // @ApiQuery({
+  //   name: 'id',
+  //   required: true,
+  //   description: 'Account ID from Myfxbook',
+  //   type: String,
+  //   example: '12345',
+  //   schema: { type: 'string', minLength: 1 },
+  // })
+  // @ApiQuery({
+  //   name: 'start',
+  //   required: true,
+  //   description: 'Start date in format YYYY-MM-DD (e.g., 2000-01-01)',
+  //   type: String,
+  //   example: '2000-01-01',
+  //   schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
+  // })
+  // @ApiQuery({
+  //   name: 'end',
+  //   required: true,
+  //   description: 'End date in format YYYY-MM-DD (e.g., 2010-01-01)',
+  //   type: String,
+  //   example: '2010-01-01',
+  //   schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
+  // })
+  // async getDailyGain(
+  //   @Query('session') session: string,
+  //   @Query('id') accountId: string,
+  //   @Query('start') startDate: string,
+  //   @Query('end') endDate: string,
+  // ): Promise<BaseResponseDto<any>> {
+  //   try {
+  //     const decoded = validateAndDecodeSession(session);
 
-      const dailyGainData = await this.myfxbookService.getDailyGain(
-        decoded,
-        accountId,
-        startDate,
-        endDate,
-      );
-      return new BaseResponseDto(
-        true,
-        dailyGainData,
-        'Daily gain data retrieved successfully',
-      );
-    } catch (error) {
-      const errorData = {
-        error: true,
-        message:
-          error instanceof HttpException
-            ? error.message
-            : 'Failed to fetch daily gain data',
-      };
-      return new BaseResponseDto(false, errorData, 'Failed to fetch daily gain data');
-    }
-  }
+  //     const dailyGainData = await this.myfxbookService.getDailyGain(
+  //       decoded,
+  //       accountId,
+  //       startDate,
+  //       endDate,
+  //     );
+  //     return new BaseResponseDto(
+  //       true,
+  //       dailyGainData,
+  //       'Daily gain data retrieved successfully',
+  //     );
+  //   } catch (error) {
+  //     const errorData = {
+  //       error: true,
+  //       message:
+  //         error instanceof HttpException
+  //           ? error.message
+  //           : 'Failed to fetch daily gain data',
+  //     };
+  //     return new BaseResponseDto(false, errorData, 'Failed to fetch daily gain data');
+  //   }
+  // }
 
   @Get('get-history')
   @HttpCode(HttpStatus.OK)
@@ -405,6 +406,60 @@ export class MyfxbookController {
         false,
         errorData,
         'Failed to fetch trade history',
+      );
+    }
+  }
+
+  @Get('get-average-trade-length')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get average trade length from history',
+    description:
+      'Calculates the average trade length (duration between openTime and closeTime) from the trade history. Returns average in milliseconds and human-readable format, along with total number of trades.',
+  })
+  @ApiQuery({
+    name: 'session',
+    required: true,
+    description: 'Session token obtained from the login endpoint',
+    type: String,
+    example: 'DSL07vu14QxHWErTIAFrH40',
+    schema: { type: 'string', minLength: 1 },
+  })
+  @ApiQuery({
+    name: 'id',
+    required: true,
+    description: 'Account ID from Myfxbook',
+    type: String,
+    example: '12345',
+    schema: { type: 'string', minLength: 1 },
+  })
+  async getAverageTradeLength(
+    @Query('session') session: string,
+    @Query('id') accountId: string,
+  ): Promise<BaseResponseDto<TradeLengthDto | any>> {
+    try {
+      const decoded = validateAndDecodeSession(session);
+
+      const tradeLengthData =
+        await this.myfxbookService.getAverageTradeLength(decoded, accountId);
+
+      return new BaseResponseDto(
+        true,
+        tradeLengthData,
+        'Average trade length calculated successfully',
+      );
+    } catch (error) {
+      const errorData = {
+        error: true,
+        message:
+          error instanceof HttpException
+            ? error.message
+            : 'Failed to calculate average trade length',
+      };
+      return new BaseResponseDto(
+        false,
+        errorData,
+        'Failed to calculate average trade length',
       );
     }
   }
