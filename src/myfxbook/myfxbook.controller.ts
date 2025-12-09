@@ -18,6 +18,7 @@ import { MyfxbookService } from './myfxbook.service';
 import { LoginDto } from './dto/login.dto';
 import { BaseResponseDto } from '../common/dto/base-response.dto';
 import { TestAuthResponseDto } from './dto/test-auth-response.dto';
+import { AggregatedAccountsDto } from './dto/aggregated-accounts.dto';
 import { validateAndDecodeSession } from '../common/utils/session.utils';
 
 @ApiTags('Myfxbook')
@@ -161,6 +162,53 @@ export class MyfxbookController {
             : 'Failed to fetch accounts',
       };
       return new BaseResponseDto(false, errorData, 'Failed to fetch accounts');
+    }
+  }
+
+  @Get('get-aggregated-accounts')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get aggregated statistics for all accounts',
+    description:
+      'Retrieves aggregated statistics including total balance, total profit, and average monthly gain across all user accounts. Requires a valid session token.',
+  })
+  @ApiQuery({
+    name: 'session',
+    required: true,
+    description: 'Session token obtained from the login endpoint',
+    type: String,
+    example: 'DSL07vu14QxHWErTIAFrH40',
+    schema: {
+      type: 'string',
+      minLength: 1,
+    },
+  })
+  async getAggregatedAccounts(
+    @Query('session') session: string,
+  ): Promise<BaseResponseDto<AggregatedAccountsDto | any>> {
+    try {
+      const decoded = validateAndDecodeSession(session);
+      const aggregatedData =
+        await this.myfxbookService.getAggregatedAccounts(decoded);
+
+      return new BaseResponseDto(
+        true,
+        aggregatedData,
+        'Aggregated accounts data retrieved successfully',
+      );
+    } catch (error) {
+      const errorData = {
+        error: true,
+        message:
+          error instanceof HttpException
+            ? error.message
+            : 'Failed to fetch aggregated accounts',
+      };
+      return new BaseResponseDto(
+        false,
+        errorData,
+        'Failed to fetch aggregated accounts',
+      );
     }
   }
 

@@ -26,6 +26,20 @@ export class MyfxbookService {
   }
 
   /**
+   * Validates that a session token is provided
+   * @param session - Session token to validate
+   * @throws HttpException if session is missing
+   */
+  private validateSession(session: string): void {
+    if (!session) {
+      throw new HttpException(
+        'Session token is required',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  /**
    * Authenticate with Myfxbook API
    * @param loginDto - Login credentials (optional, uses env vars if not provided)
    * @returns Session token
@@ -157,12 +171,7 @@ export class MyfxbookService {
     endDate: string,
   ): Promise<any> {
     try {
-      if (!session) {
-        throw new HttpException(
-          'Session token is required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
+      this.validateSession(session);
 
       if (!accountId) {
         throw new HttpException(
@@ -224,12 +233,7 @@ export class MyfxbookService {
     endDate: string,
   ): Promise<any> {
     try {
-      if (!session) {
-        throw new HttpException(
-          'Session token is required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
+      this.validateSession(session);
 
       if (!accountId) {
         throw new HttpException(
@@ -283,12 +287,7 @@ export class MyfxbookService {
    */
   async logout(session: string): Promise<any> {
     try {
-      if (!session) {
-        throw new HttpException(
-          'Session token is required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
+      this.validateSession(session);
 
       const response = await this.makeAuthenticatedRequest(
         'logout.json',
@@ -322,12 +321,7 @@ export class MyfxbookService {
    */
   async getMyAccounts(session: string): Promise<any> {
     try {
-      if (!session) {
-        throw new HttpException(
-          'Session token is required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
+      this.validateSession(session);
 
       const response = await this.makeAuthenticatedRequest(
         'get-my-accounts.json',
@@ -355,6 +349,75 @@ export class MyfxbookService {
   }
 
   /**
+   * Get aggregated statistics for all user accounts
+   * @param session - Session token
+   * @returns Aggregated account statistics (total balance, total profit, average monthly gain)
+   */
+  async getAggregatedAccounts(session: string): Promise<{
+    totalBalance: number;
+    totalProfit: number;
+    averageMonthlyReturn: number;
+    totalAccounts: number;
+  }> {
+    try {
+      this.validateSession(session);
+
+      const accountsResponse = await this.getMyAccounts(session);
+      const accounts = accountsResponse?.accounts || [];
+
+      if (!Array.isArray(accounts) || accounts.length === 0) {
+        return {
+          totalBalance: 0,
+          totalProfit: 0,
+          averageMonthlyReturn: 0,
+          totalAccounts: 0,
+        };
+      }
+
+      let totalBalance = 0;
+      let totalProfit = 0;
+      let averageMonthlyReturn = 0;
+      let accountsWithMonthly = 0;
+
+      accounts.forEach((account: any) => {
+        // Sum balances
+        if (account.balance !== undefined && account.balance !== null) {
+          totalBalance += Number(account.balance) || 0;
+        }
+
+        // Sum profits
+        if (account.profit !== undefined && account.profit !== null) {
+          totalProfit += Number(account.profit) || 0;
+        }
+
+        // Calculate average return (monthly return percentage)
+        if (account.monthly !== undefined && account.monthly !== null) {
+          averageMonthlyReturn += Number(account.monthly) || 0;
+          accountsWithMonthly++;
+        }
+      });
+
+      const averageMonthlyReturnPercentage =
+        accountsWithMonthly > 0 ? averageMonthlyReturn / accountsWithMonthly : 0;
+
+      return {
+        totalBalance: Number(totalBalance.toFixed(2)),
+        totalProfit: Number(totalProfit.toFixed(2)),
+        averageMonthlyReturn: Number(averageMonthlyReturnPercentage.toFixed(2)),
+        totalAccounts: accounts.length,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        `Failed to fetch aggregated accounts: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
    * Get trade history for an account
    * @param session - Session token
    * @param accountId - Account ID
@@ -362,12 +425,7 @@ export class MyfxbookService {
    */
   async getHistory(session: string, accountId: string): Promise<any> {
     try {
-      if (!session) {
-        throw new HttpException(
-          'Session token is required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
+      this.validateSession(session);
 
       if (!accountId) {
         throw new HttpException(
@@ -417,12 +475,7 @@ export class MyfxbookService {
     endDate: string,
   ): Promise<any> {
     try {
-      if (!session) {
-        throw new HttpException(
-          'Session token is required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
+      this.validateSession(session);
 
       if (!accountId) {
         throw new HttpException(
