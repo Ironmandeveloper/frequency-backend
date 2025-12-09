@@ -20,6 +20,7 @@ import { BaseResponseDto } from '../common/dto/base-response.dto';
 import { TestAuthResponseDto } from './dto/test-auth-response.dto';
 import { AggregatedAccountsDto } from './dto/aggregated-accounts.dto';
 import { TradeLengthDto } from './dto/trade-length.dto';
+import { BalanceProfitabilityDto } from './dto/balance-profitability.dto';
 import { validateAndDecodeSession } from '../common/utils/session.utils';
 
 @ApiTags('Myfxbook')
@@ -460,6 +461,83 @@ export class MyfxbookController {
         false,
         errorData,
         'Failed to calculate average trade length',
+      );
+    }
+  }
+
+  @Get('get-balance-profitability')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get balance profitability between start and end dates',
+    description:
+      'Calculates profitability based on balances at the provided start and end dates using daily data: (endBalance - startBalance) / startBalance. Returns start balance, end balance, profitability ratio, and percentage.',
+  })
+  @ApiQuery({
+    name: 'session',
+    required: true,
+    description: 'Session token obtained from the login endpoint',
+    type: String,
+    example: 'DSL07vu14QxHWErTIAFrH40',
+    schema: { type: 'string', minLength: 1 },
+  })
+  @ApiQuery({
+    name: 'id',
+    required: true,
+    description: 'Account ID from Myfxbook',
+    type: String,
+    example: '12345',
+    schema: { type: 'string', minLength: 1 },
+  })
+  @ApiQuery({
+    name: 'start',
+    required: true,
+    description: 'Start date in format YYYY-MM-DD',
+    type: String,
+    example: '2024-01-01',
+    schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
+  })
+  @ApiQuery({
+    name: 'end',
+    required: true,
+    description: 'End date in format YYYY-MM-DD',
+    type: String,
+    example: '2024-12-31',
+    schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
+  })
+  async getBalanceProfitability(
+    @Query('session') session: string,
+    @Query('id') accountId: string,
+    @Query('start') startDate: string,
+    @Query('end') endDate: string,
+  ): Promise<BaseResponseDto<BalanceProfitabilityDto | any>> {
+    try {
+      const decoded = validateAndDecodeSession(session);
+
+      const profitability =
+        await this.myfxbookService.getBalanceProfitability(
+          decoded,
+          accountId,
+          startDate,
+          endDate,
+        );
+
+      return new BaseResponseDto(
+        true,
+        profitability,
+        'Balance profitability calculated successfully',
+      );
+    } catch (error) {
+      const errorData = {
+        error: true,
+        message:
+          error instanceof HttpException
+            ? error.message
+            : 'Failed to calculate balance profitability',
+      };
+      return new BaseResponseDto(
+        false,
+        errorData,
+        'Failed to calculate balance profitability',
       );
     }
   }

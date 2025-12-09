@@ -619,6 +619,153 @@ export class MyfxbookService {
   }
 
   /**
+   * Get balance profitability between start and end date using daily data
+   * @param session - Session token
+   * @param accountId - Account ID
+   * @param startDate - Start date (YYYY-MM-DD)
+   * @param endDate - End date (YYYY-MM-DD)
+   * @returns Profitability data
+   */
+  async getBalanceProfitability(
+    session: string,
+    accountId: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<{
+    startBalance: number;
+    endBalance: number;
+    profitability: number;
+    profitabilityPercent: number;
+  }> {
+    try {
+      this.validateSession(session);
+
+      if (!accountId) {
+        throw new HttpException(
+          'Account ID is required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      if (!startDate || !endDate) {
+        throw new HttpException(
+          'Start date and end date are required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      const dataDaily = await this.getDataDaily(
+        session,
+        accountId,
+        startDate,
+        endDate,
+      );
+
+      // Extract records flexibly from the daily data response
+      let records: any[] = [];
+      if (Array.isArray((dataDaily as any).dataDaily)) {
+        records = (dataDaily as any).dataDaily;
+      } else if (Array.isArray((dataDaily as any).data)) {
+        records = (dataDaily as any).data;
+      } else if (Array.isArray((dataDaily as any).records)) {
+        records = (dataDaily as any).records;
+      } else if (Array.isArray(dataDaily)) {
+        records = dataDaily as any[];
+      } else if (
+        (dataDaily as any).data &&
+        typeof (dataDaily as any).data === 'object'
+      ) {
+        const dataObj = (dataDaily as any).data;
+        if (Array.isArray(dataObj.dataDaily)) {
+          records = dataObj.dataDaily;
+        } else if (Array.isArray(dataObj.records)) {
+          records = dataObj.records;
+        } else if (Array.isArray(dataObj.data)) {
+          records = dataObj.data;
+        }
+      }
+
+      // Normalize records to plain objects (handle nested array items)
+      const normalized: any[] = Array.isArray(records)
+        ? records
+            .map((item) => (Array.isArray(item) ? item[0] : item))
+            .filter((item) => !!item)
+        : [];
+
+      if (normalized.length === 0) {
+        return {
+          startBalance: 0,
+          endBalance: 0,
+          profitability: 0,
+          profitabilityPercent: 0,
+        };
+      }
+
+      // Helper to find a balance for a given date (match exact or prefix)
+      const getBalanceForDate = (targetDate: string): number | null => {
+        const match = normalized.find((entry) => {
+          if (!entry) return false;
+          const dateValue =
+            entry.date || entry.time || entry.timestamp || entry.day;
+          if (!dateValue) return false;
+          const dateStr = String(dateValue);
+          return (
+            dateStr === targetDate ||
+            dateStr.startsWith(targetDate) ||
+            dateStr.includes(targetDate)
+          );
+        });
+        if (match && match.balance !== undefined && match.balance !== null) {
+          return Number(match.balance) || 0;
+        }
+        return null;
+      };
+
+      let startBalance = getBalanceForDate(startDate);
+      let endBalance = getBalanceForDate(endDate);
+
+      // Fallback: use first and last records if exact date matches not found
+      if (startBalance === null && normalized.length > 0) {
+        startBalance =
+          normalized[0].balance !== undefined && normalized[0].balance !== null
+            ? Number(normalized[0].balance) || 0
+            : 0;
+      }
+      if (endBalance === null && normalized.length > 0) {
+        const last = normalized[normalized.length - 1];
+        endBalance =
+          last.balance !== undefined && last.balance !== null
+            ? Number(last.balance) || 0
+            : 0;
+      }
+
+      // If still missing balances, default to 0 to avoid NaN
+      startBalance = startBalance ?? 0;
+      endBalance = endBalance ?? 0;
+
+      const profitability =
+        startBalance !== 0
+          ? (endBalance - startBalance) / endBalance
+          : 0;
+
+      return {
+        startBalance: Number(startBalance.toFixed(2)),
+        endBalance: Number(endBalance.toFixed(2)),
+        profitability: Number(profitability.toFixed(6)),
+        profitabilityPercent: Number((profitability * 100).toFixed(2)),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        `Failed to calculate balance profitability: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
   * Get daily data for an account
   * @param session - Session token
   * @param accountId - Account ID
