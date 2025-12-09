@@ -412,7 +412,7 @@ export class MyfxbookController {
   @Get('get-data-daily')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Get daily data for a Myfxbook account',
+    summary: 'Get daily data for a Myfxbook account and total profit',
     description:
       'Retrieves daily data for a specific account between the specified date range. This endpoint provides comprehensive daily statistics including balance, equity, and other account metrics.',
   })

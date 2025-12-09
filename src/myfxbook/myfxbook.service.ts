@@ -460,14 +460,14 @@ export class MyfxbookService {
     }
   }
 
-   /**
-   * Get daily data for an account
-   * @param session - Session token
-   * @param accountId - Account ID
-   * @param startDate - Start date (YYYY-MM-DD)
-   * @param endDate - End date (YYYY-MM-DD)
-   * @returns Daily data
-   */
+  /**
+  * Get daily data for an account
+  * @param session - Session token
+  * @param accountId - Account ID
+  * @param startDate - Start date (YYYY-MM-DD)
+  * @param endDate - End date (YYYY-MM-DD)
+  * @returns Daily data
+  */
   async getDataDaily(
     session: string,
     accountId: string,
@@ -496,7 +496,7 @@ export class MyfxbookService {
         params.end = endDate;
       }
 
-      const response = await this.makeAuthenticatedRequest(
+      const response: any = await this.makeAuthenticatedRequest(
         'get-data-daily.json',
         session,
         params,
@@ -510,7 +510,38 @@ export class MyfxbookService {
         );
       }
 
-      return response;
+      // Calculate total profit from all records
+      let totalProfit = 0;
+
+      // Try to find records in different possible locations in the response
+      // The response might have data in response.data, response.records, or directly as an array
+      let records: any[] = [];
+
+      if (Array.isArray(response.dataDaily)) {
+        records = response.dataDaily;
+      }
+
+      // Sum up all profit values from records
+      if (Array.isArray(records) && records.length > 0) {
+        records.forEach((recordArr: any) => {
+          const record = recordArr[0]; // extract object from inner array
+
+          if (!record) return;
+
+          const profitValue =
+            record.profit !== undefined ? record.profit : record.profite;
+
+          if (profitValue !== undefined && profitValue !== null) {
+            totalProfit += Number(profitValue) || 0;
+          }
+        });
+      }
+
+      // Add totalProfite to the response
+      return {
+        ...response,
+        totalProfit: Number(totalProfit.toFixed(2)),
+      };
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
