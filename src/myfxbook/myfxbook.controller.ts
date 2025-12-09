@@ -22,6 +22,7 @@ import { AggregatedAccountsDto } from './dto/aggregated-accounts.dto';
 import { TradeLengthDto } from './dto/trade-length.dto';
 import { BalanceProfitabilityDto } from './dto/balance-profitability.dto';
 import { GainComparisonDto } from './dto/gain-comparison.dto';
+import { DailyDataComparisonDto } from './dto/daily-data-comparison.dto';
 import { validateAndDecodeSession } from '../common/utils/session.utils';
 
 @ApiTags('Myfxbook')
@@ -523,6 +524,60 @@ export class MyfxbookController {
         false,
         errorData,
         'Failed to fetch gain comparisons',
+      );
+    }
+  }
+
+  @Get('get-daily-data-comparisons')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get daily data comparisons for multiple periods',
+    description:
+      'Retrieves daily data (profit and pips) and comparisons for today vs yesterday, this week vs previous week, this month vs previous month, and this year vs previous year. Automatically calculates date ranges, sums profit and pips, and calculates differences.',
+  })
+  @ApiQuery({
+    name: 'session',
+    required: true,
+    description: 'Session token obtained from the login endpoint',
+    type: String,
+    example: 'DSL07vu14QxHWErTIAFrH40',
+    schema: { type: 'string', minLength: 1 },
+  })
+  @ApiQuery({
+    name: 'id',
+    required: true,
+    description: 'Account ID from Myfxbook',
+    type: String,
+    example: '12345',
+    schema: { type: 'string', minLength: 1 },
+  })
+  async getDailyDataComparisons(
+    @Query('session') session: string,
+    @Query('id') accountId: string,
+  ): Promise<BaseResponseDto<DailyDataComparisonDto | any>> {
+    try {
+      const decoded = validateAndDecodeSession(session);
+
+      const dailyDataComparisons =
+        await this.myfxbookService.getDailyDataComparisons(decoded, accountId);
+
+      return new BaseResponseDto(
+        true,
+        dailyDataComparisons,
+        'Daily data comparisons retrieved successfully',
+      );
+    } catch (error) {
+      const errorData = {
+        error: true,
+        message:
+          error instanceof HttpException
+            ? error.message
+            : 'Failed to fetch daily data comparisons',
+      };
+      return new BaseResponseDto(
+        false,
+        errorData,
+        'Failed to fetch daily data comparisons',
       );
     }
   }

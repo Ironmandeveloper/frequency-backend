@@ -7,6 +7,7 @@ import {
   MyfxbookApiResponse,
 } from './dto/myfxbook-response.dto';
 import { LoginDto } from './dto/login.dto';
+import { calculateDifference, calculateDifferences } from 'src/common/utils/session.utils';
 
 @Injectable()
 export class MyfxbookService {
@@ -34,6 +35,20 @@ export class MyfxbookService {
     if (!session) {
       throw new HttpException(
         'Session token is required',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  /**
+   * Validates that an account ID is provided
+   * @param accountId - Account ID to validate
+   * @throws HttpException if account ID is missing
+   */
+  private validateAccountId(accountId: string): void {
+    if (!accountId) {
+      throw new HttpException(
+        'Account ID is required',
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -302,13 +317,7 @@ export class MyfxbookService {
   async getHistory(session: string, accountId: string): Promise<any> {
     try {
       this.validateSession(session);
-
-      if (!accountId) {
-        throw new HttpException(
-          'Account ID is required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
+      this.validateAccountId(accountId);
 
       const response = await this.makeAuthenticatedRequest(
         'get-history.json',
@@ -407,19 +416,13 @@ export class MyfxbookService {
   }> {
     try {
       this.validateSession(session);
-
-      if (!accountId) {
-        throw new HttpException(
-          'Account ID is required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
+      this.validateAccountId(accountId);
 
       const historyResponse = await this.getHistory(session, accountId);
-      
+
       // Try to find history records in different possible locations
       let records: any[] = [];
-      
+
       if (Array.isArray(historyResponse)) {
         records = historyResponse;
       } else if (Array.isArray((historyResponse as any).history)) {
@@ -516,13 +519,7 @@ export class MyfxbookService {
   }> {
     try {
       this.validateSession(session);
-
-      if (!accountId) {
-        throw new HttpException(
-          'Account ID is required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
+      this.validateAccountId(accountId);
 
       if (!startDate || !endDate) {
         throw new HttpException(
@@ -565,8 +562,8 @@ export class MyfxbookService {
       // Normalize records to plain objects (handle nested array items)
       const normalized: any[] = Array.isArray(records)
         ? records
-            .map((item) => (Array.isArray(item) ? item[0] : item))
-            .filter((item) => !!item)
+          .map((item) => (Array.isArray(item) ? item[0] : item))
+          .filter((item) => !!item)
         : [];
 
       if (normalized.length === 0) {
@@ -654,7 +651,7 @@ export class MyfxbookService {
         for (let i = peakIndex + 1; i < normalized.length; i++) {
           const balance =
             normalized[i].balance !== undefined &&
-            normalized[i].balance !== null
+              normalized[i].balance !== null
               ? Number(normalized[i].balance) || 0
               : 0;
 
@@ -726,13 +723,7 @@ export class MyfxbookService {
   ): Promise<any> {
     try {
       this.validateSession(session);
-
-      if (!accountId) {
-        throw new HttpException(
-          'Account ID is required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
+      this.validateAccountId(accountId);
 
       const params: Record<string, any> = {
         id: accountId,
@@ -916,40 +907,22 @@ export class MyfxbookService {
     session: string,
     accountId: string,
   ): Promise<{
-    todayVsYesterday: {
-      current: { gain: number; startDate: string; endDate: string };
-      previous: { gain: number; startDate: string; endDate: string };
-      difference: number;
+    today: {
       differencePercent: number;
     };
-    thisWeekVsPreviousWeek: {
-      current: { gain: number; startDate: string; endDate: string };
-      previous: { gain: number; startDate: string; endDate: string };
-      difference: number;
+    thisWeek: {
       differencePercent: number;
     };
-    thisMonthVsPreviousMonth: {
-      current: { gain: number; startDate: string; endDate: string };
-      previous: { gain: number; startDate: string; endDate: string };
-      difference: number;
+    thisMonth: {
       differencePercent: number;
     };
-    thisYearVsPreviousYear: {
-      current: { gain: number; startDate: string; endDate: string };
-      previous: { gain: number; startDate: string; endDate: string };
-      difference: number;
+    thisYear: {
       differencePercent: number;
     };
   }> {
     try {
       this.validateSession(session);
-
-      if (!accountId) {
-        throw new HttpException(
-          'Account ID is required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
+      this.validateAccountId(accountId);
 
       const now = new Date();
       const today = new Date(now);
@@ -1031,44 +1004,22 @@ export class MyfxbookService {
         ),
       ]);
 
-      // Helper function to calculate difference
-      const calculateDifference = (
-        current: { gain: number },
-        previous: { gain: number },
-      ) => {
-        const diff = current.gain - previous.gain;
-        const diffPercent =
-          previous.gain !== 0 ? (diff / Math.abs(previous.gain)) * 100 : 0;
-        return {
-          difference: Number(diff.toFixed(2)),
-          differencePercent: Number(diffPercent.toFixed(2)),
-        };
-      };
-
       const todayDiff = calculateDifference(todayGain, yesterdayGain);
       const weekDiff = calculateDifference(thisWeekGain, previousWeekGain);
       const monthDiff = calculateDifference(thisMonthGain, previousMonthGain);
       const yearDiff = calculateDifference(thisYearGain, previousYearGain);
 
       return {
-        todayVsYesterday: {
-          current: todayGain,
-          previous: yesterdayGain,
+        today: {
           ...todayDiff,
         },
-        thisWeekVsPreviousWeek: {
-          current: thisWeekGain,
-          previous: previousWeekGain,
+        thisWeek: {
           ...weekDiff,
         },
-        thisMonthVsPreviousMonth: {
-          current: thisMonthGain,
-          previous: previousMonthGain,
+        thisMonth: {
           ...monthDiff,
         },
-        thisYearVsPreviousYear: {
-          current: thisYearGain,
-          previous: previousYearGain,
+        thisYear: {
           ...yearDiff,
         },
       };
@@ -1082,5 +1033,142 @@ export class MyfxbookService {
       );
     }
   }
+
+  /**
+   * Extract profit and pips from get-data-daily response
+   */
+  private extractProfitAndPips(response: any): {
+    totalProfit: number;
+    totalPips: number;
+  } {
+    let totalProfit = 0;
+    let totalPips = 0;
+
+    // Try to find records in different possible locations
+    let records: any[] = [];
+
+    if (Array.isArray((response as any).dataDaily)) {
+      records = (response as any).dataDaily;
+    } else if (Array.isArray((response as any).data)) {
+      records = (response as any).data;
+    } else if (Array.isArray((response as any).records)) {
+      records = (response as any).records;
+    } else if (Array.isArray(response)) {
+      records = response as any[];
+    }
+
+    // Sum up all profit and pips values from records
+    if (Array.isArray(records) && records.length > 0) {
+      records.forEach((recordArr: any) => {
+        const record = Array.isArray(recordArr) ? recordArr[0] : recordArr;
+
+        if (!record) return;
+
+        // Extract profit
+        const profitValue =
+          record.profit !== undefined
+            ? record.profit
+            : record.profite !== undefined
+              ? record.profite
+              : null;
+
+        if (profitValue !== undefined && profitValue !== null) {
+          totalProfit += Number(profitValue) || 0;
+        }
+
+        // Extract pips
+        const pipsValue =
+          record.pips !== undefined
+            ? record.pips
+            : record.pip !== undefined
+              ? record.pip
+              : null;
+
+        if (pipsValue !== undefined && pipsValue !== null) {
+          totalPips += Number(pipsValue) || 0;
+        }
+      });
+    }
+
+    return {
+      totalProfit: Number(totalProfit.toFixed(2)),
+      totalPips: Number(totalPips.toFixed(2)),
+    };
+  }
+
+  /**
+   * Get daily data comparisons for multiple periods (today/yesterday, this week/previous week, etc.)
+   * @param session - Session token
+   * @param accountId - Account ID
+   * @returns Daily data comparison for all periods with profit and pips sums
+   */
+  async getDailyDataComparisons(
+    session: string,
+    accountId: string,
+  ) {
+    try {
+      this.validateSession(session);
+      this.validateAccountId(accountId);
+
+      const now = new Date();
+      const today = new Date(now.setHours(0, 0, 0, 0));
+
+      // Generic function for comparing two periods
+      const comparePeriods = async (startA :any, endA:any, startB:any, endB:any) => {
+        const [dataA, dataB] = await Promise.all([
+          this.getDataDaily(session, accountId, this.formatDate(startA), this.formatDate(endA)),
+          this.getDataDaily(session, accountId, this.formatDate(startB), this.formatDate(endB)),
+        ]);
+
+        return calculateDifferences(
+          this.extractProfitAndPips(dataA),
+          this.extractProfitAndPips(dataB),
+        );
+      };
+
+      // Today vs Yesterday
+      const yesterday = new Date(today);
+      yesterday.setDate(today.getDate() - 1);
+      const todayDiff = await comparePeriods(today, today, yesterday, yesterday);
+
+      // Week comparison
+      const thisWeekStart = this.getStartOfWeek(today);
+      const thisWeekEnd = today;
+      const prevWeekEnd = new Date(thisWeekStart);
+      prevWeekEnd.setDate(prevWeekEnd.getDate() - 1);
+      const prevWeekStart = this.getStartOfWeek(prevWeekEnd);
+      const weekDiff = await comparePeriods(thisWeekStart, thisWeekEnd, prevWeekStart, prevWeekEnd);
+
+      // Month comparison
+      const thisMonthStart = this.getStartOfMonth(today);
+      const thisMonthEnd = today;
+      const prevMonthEnd = new Date(thisMonthStart);
+      prevMonthEnd.setDate(prevMonthEnd.getDate() - 1);
+      const prevMonthStart = this.getStartOfMonth(prevMonthEnd);
+      const monthDiff = await comparePeriods(thisMonthStart, thisMonthEnd, prevMonthStart, prevMonthEnd);
+
+      // Year comparison
+      const thisYearStart = this.getStartOfYear(today);
+      const thisYearEnd = today;
+      const prevYearEnd = new Date(thisYearStart);
+      prevYearEnd.setDate(prevYearEnd.getDate() - 1);
+      const prevYearStart = this.getStartOfYear(prevYearEnd);
+      const yearDiff = await comparePeriods(thisYearStart, thisYearEnd, prevYearStart, prevYearEnd);
+
+      return {
+        today: todayDiff,
+        thisWeek: weekDiff,
+        thisMonth: monthDiff,
+        thisYear: yearDiff,
+      };
+
+    } catch (error) {
+      throw new HttpException(
+        `Failed to get daily data comparisons: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
 }
 
