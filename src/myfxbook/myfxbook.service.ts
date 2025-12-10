@@ -233,7 +233,7 @@ export class MyfxbookService {
       const decoded = validateAndDecodeSession(resolvedSession)
       const cacheKey = this.cacheService.generateKey('myfxbook:accounts', resolvedSession);
       const cached = await this.cacheService.get<any>(cacheKey);
-      
+
       if (cached) {
         this.logger.debug('Cache hit for getMyAccounts');
         return cached;
@@ -283,7 +283,7 @@ export class MyfxbookService {
 
       const cacheKey = this.cacheService.generateKey('myfxbook:aggregated', resolvedSession);
       const cached = await this.cacheService.get<any>(cacheKey);
-      
+
       if (cached) {
         this.logger.debug('Cache hit for getAggregatedAccounts');
         return cached;
@@ -360,7 +360,7 @@ export class MyfxbookService {
 
       const cacheKey = this.cacheService.generateKey('myfxbook:history', resolvedSession, accountId);
       const cached = await this.cacheService.get<any>(cacheKey);
-      
+
       if (cached) {
         this.logger.debug('Cache hit for getHistory');
         return cached;
@@ -476,7 +476,7 @@ export class MyfxbookService {
         averageTradeLengthFormatted: string;
         totalTrades: number;
       }>(cacheKey);
-      
+
       if (cached) {
         this.logger.debug('Cache hit for getAverageTradeLength');
         return cached;
@@ -600,7 +600,7 @@ export class MyfxbookService {
         profitabilityPercent: number;
         drawdownPercent: number;
       }>(cacheKey);
-      
+
       if (cached) {
         this.logger.debug('Cache hit for getBalanceProfitability');
         return cached;
@@ -803,7 +803,7 @@ export class MyfxbookService {
 
       const cacheKey = this.cacheService.generateKey('myfxbook:daily', resolvedSession, accountId, startDate, endDate);
       const cached = await this.cacheService.get<any>(cacheKey);
-      
+
       if (cached) {
         this.logger.debug('Cache hit for getDataDaily');
         return cached;
@@ -960,7 +960,7 @@ export class MyfxbookService {
       const resolvedSession = await this.resolveSession(session);
       const cacheKey = this.cacheService.generateKey('myfxbook:gain', resolvedSession, accountId, startDate, endDate);
       const cached = await this.cacheService.get<{ gain: number; startDate: string; endDate: string }>(cacheKey);
-      
+
       if (cached) {
         this.logger.debug('Cache hit for getGainForPeriod');
         return cached;
@@ -988,7 +988,7 @@ export class MyfxbookService {
 
       const gain = this.extractGainValue(response);
       const result = { gain, startDate, endDate };
-      
+
       // Cache successful response
       await this.cacheService.set(cacheKey, result);
       return result;
@@ -1035,7 +1035,7 @@ export class MyfxbookService {
         thisMonth: { differencePercent: number };
         thisYear: { differencePercent: number };
       }>(cacheKey);
-      
+
       if (cached) {
         this.logger.debug('Cache hit for getGainComparisons');
         return cached;
@@ -1236,7 +1236,7 @@ export class MyfxbookService {
 
       const cacheKey = this.cacheService.generateKey('myfxbook:daily-comparisons', resolvedSession, accountId);
       const cached = await this.cacheService.get<any>(cacheKey);
-      
+
       if (cached) {
         this.logger.debug('Cache hit for getDailyDataComparisons');
         return cached;
@@ -1248,7 +1248,7 @@ export class MyfxbookService {
       const today = new Date(now.setHours(0, 0, 0, 0));
 
       // Generic function for comparing two periods
-      const comparePeriods = async (startA :any, endA:any, startB:any, endB:any) => {
+      const comparePeriods = async (startA: any, endA: any, startB: any, endB: any) => {
         const [dataA, dataB] = await Promise.all([
           this.getDataDaily(decoded, accountId, this.formatDate(startA), this.formatDate(endA)),
           this.getDataDaily(decoded, accountId, this.formatDate(startB), this.formatDate(endB)),
@@ -1308,5 +1308,26 @@ export class MyfxbookService {
     }
   }
 
+
+  async getAllComparisons(session: string | undefined, accountId: string) {
+    try {
+      const [gain, daily] = await Promise.all([
+        this.getGainComparisons(session, accountId),
+        this.getDailyDataComparisons(session, accountId),
+      ]);
+
+      return {
+        gainComparisons: gain,
+        dailyDataComparisons: daily,
+      };
+
+    } catch (error) {
+      throw new HttpException(
+        `Failed to get combined comparisons: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+  
 }
 

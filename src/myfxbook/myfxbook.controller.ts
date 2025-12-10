@@ -197,6 +197,7 @@ export class MyfxbookController {
       );
     }
   }
+  
 
   @Get('get-data-daily')
   @HttpCode(HttpStatus.OK)
@@ -259,91 +260,22 @@ export class MyfxbookController {
     }
   }
 
-  @Get('get-gain-comparisons')
+
+  @Get('get-data-comparisons')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Get gain comparisons for today, this week, this month, this year on the base of risk account and myFx session',
+    summary: 'Get gain, profit difference, pips differencs on the base of today, this weeek, this month and this year',
     description:
-      'Retrieves gain data and comparisons (today/week/month/year). Session is handled automatically; client does not need to pass it.',
+      'Get gain, profit difference, pips differencs on the base of today, this weeek, this month and this year',
   })
-  @ApiQuery({
-    name: 'id',
-    required: true,
-    description: 'Account ID from Myfxbook',
-    type: String,
-    example: '12345',
-    schema: { type: 'string', minLength: 1 },
-  })
-  async getGainComparisons(
-    @Query('id') accountId: string,
-  ): Promise<BaseResponseDto<GainComparisonDto | any>> {
-    try {
-
-      const gainComparisons =
-        await this.myfxbookService.getGainComparisons(undefined, accountId);
-
-      return new BaseResponseDto(
-        true,
-        gainComparisons,
-        'Gain comparisons retrieved successfully',
-      );
-    } catch (error) {
-      const errorData = {
-        error: true,
-        message:
-          error instanceof HttpException
-            ? error.message
-            : 'Failed to fetch gain comparisons',
-      };
-      return new BaseResponseDto(
-        false,
-        errorData,
-        'Failed to fetch gain comparisons',
-      );
+  async getAll(
+    @Query('accountId') accountId?: string,
+  ) {
+    if (!accountId) {
+      throw new HttpException('accountId is required', HttpStatus.BAD_REQUEST);
     }
-  }
 
-  @Get('get-daily-data-comparisons')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Get profite difference and pips difference on today, this week, this month, and this year base on risk account and myfx session',
-    description:
-      'Retrieves daily data (profit and pips) comparisons across periods. Session is handled automatically; client does not need to pass it.',
-  })
-  @ApiQuery({
-    name: 'id',
-    required: true,
-    description: 'Account ID from Myfxbook',
-    type: String,
-    example: '12345',
-    schema: { type: 'string', minLength: 1 },
-  })
-  async getDailyDataComparisons(
-    @Query('id') accountId: string,
-  ): Promise<BaseResponseDto<DailyDataComparisonDto | any>> {
-    try {
-      const dailyDataComparisons =
-        await this.myfxbookService.getDailyDataComparisons(undefined, accountId);
-
-      return new BaseResponseDto(
-        true,
-        dailyDataComparisons,
-        'Daily data comparisons retrieved successfully',
-      );
-    } catch (error) {
-      const errorData = {
-        error: true,
-        message:
-          error instanceof HttpException
-            ? error.message
-            : 'Failed to fetch daily data comparisons',
-      };
-      return new BaseResponseDto(
-        false,
-        errorData,
-        'Failed to fetch daily data comparisons',
-      );
-    }
+    return this.myfxbookService.getAllComparisons(undefined, accountId);
   }
 }
 
