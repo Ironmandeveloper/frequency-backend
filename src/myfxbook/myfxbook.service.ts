@@ -1328,6 +1328,53 @@ export class MyfxbookService {
       );
     }
   }
+
+  /**
+   * Get balance profitability and average trade length together
+   * @param session - Session token (optional, resolved automatically)
+   * @param accountId - Account ID
+   * @param startDate - Start date (YYYY-MM-DD)
+   * @param endDate - End date (YYYY-MM-DD)
+   */
+  async getPerformanceSummary(
+    session: string | undefined,
+    accountId: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<{
+    balanceProfitability: {
+      profitabilityPercent: number;
+      drawdownPercent: number;
+    };
+    averageTradeLength: {
+      averageTradeLengthMs: number;
+      averageTradeLengthFormatted: string;
+      totalTrades: number;
+    };
+  }> {
+    try {
+      const resolvedSession = await this.resolveSession(session);
+      this.validateAccountId(accountId);
+
+      const [balanceProfitability, averageTradeLength] = await Promise.all([
+        this.getBalanceProfitability(resolvedSession, accountId, startDate, endDate),
+        this.getAverageTradeLength(resolvedSession, accountId),
+      ]);
+
+      return {
+        balanceProfitability,
+        averageTradeLength,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        `Failed to get performance summary: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
   
 }
 

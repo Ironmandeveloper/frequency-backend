@@ -14,10 +14,6 @@ import {
 import { MyfxbookService } from './myfxbook.service';
 import { BaseResponseDto } from '../common/dto/base-response.dto';
 import { AggregatedAccountsDto } from './dto/aggregated-accounts.dto';
-import { TradeLengthDto } from './dto/trade-length.dto';
-import { BalanceProfitabilityDto } from './dto/balance-profitability.dto';
-import { GainComparisonDto } from './dto/gain-comparison.dto';
-import { DailyDataComparisonDto } from './dto/daily-data-comparison.dto';
 
 @ApiTags('Myfxbook')
 @Controller('myfxbook')
@@ -27,7 +23,7 @@ export class MyfxbookController {
   @Get('get-my-accounts')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Get all trading accounts (session handled automatically)',
+    summary: 'Get all risks accounts for drowndown options ',
     description:
       'Retrieves all trading accounts. Session is managed automatically via backend cache; clients do not need to provide it.',
   })
@@ -56,7 +52,7 @@ export class MyfxbookController {
   @Get('get-aggregated-accounts')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Get total balance, total profit, average monthly return',
+    summary: 'Get total balance, total profit, average monthly return on the base my myfx session',
     description:
       'Retrieves aggregated statistics; session is managed automatically via backend cache.',
   })
@@ -88,55 +84,12 @@ export class MyfxbookController {
   }
 
 
-  @Get('get-average-trade-length')
+  @Get('get-performance-summary')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Get average trade length from history and total trades',
+    summary: 'Get balance profitability, total trades, drawdon and average trade length together of the specific risk account',
     description:
-      'Calculates the average trade length. Session is handled automatically; client does not need to pass it.',
-  })
-  @ApiQuery({
-    name: 'id',
-    required: true,
-    description: 'Account ID from Myfxbook',
-    type: String,
-    example: '12345',
-    schema: { type: 'string', minLength: 1 },
-  })
-  async getAverageTradeLength(
-    @Query('id') accountId: string,
-  ): Promise<BaseResponseDto<TradeLengthDto | any>> {
-    try {
-      const tradeLengthData =
-        await this.myfxbookService.getAverageTradeLength(undefined, accountId);
-
-      return new BaseResponseDto(
-        true,
-        tradeLengthData,
-        'Average trade length calculated successfully',
-      );
-    } catch (error) {
-      const errorData = {
-        error: true,
-        message:
-          error instanceof HttpException
-            ? error.message
-            : 'Failed to calculate average trade length',
-      };
-      return new BaseResponseDto(
-        false,
-        errorData,
-        'Failed to calculate average trade length',
-      );
-    }
-  }
-
-  @Get('get-balance-profitability')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Get balance profitability and drawdown between start and end dates',
-    description:
-      'Calculates profitability and drawdown using daily data. Session is handled automatically; client does not need to pass it.',
+      'Returns both balance profitability (with drawdown) and average trade length in one call. Session is handled automatically; client only provides accountId, start, end.',
   })
   @ApiQuery({
     name: 'id',
@@ -162,25 +115,23 @@ export class MyfxbookController {
     example: '2024-12-31',
     schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
   })
-  async getBalanceProfitability(
+  async getPerformanceSummary(
     @Query('id') accountId: string,
     @Query('start') startDate: string,
     @Query('end') endDate: string,
-  ): Promise<BaseResponseDto<BalanceProfitabilityDto | any>> {
+  ): Promise<BaseResponseDto<any>> {
     try {
-
-      const profitability =
-        await this.myfxbookService.getBalanceProfitability(
-          undefined,
-          accountId,
-          startDate,
-          endDate,
-        );
+      const data = await this.myfxbookService.getPerformanceSummary(
+        undefined,
+        accountId,
+        startDate,
+        endDate,
+      );
 
       return new BaseResponseDto(
         true,
-        profitability,
-        'Balance profitability calculated successfully',
+        data,
+        'Performance summary retrieved successfully',
       );
     } catch (error) {
       const errorData = {
@@ -188,12 +139,12 @@ export class MyfxbookController {
         message:
           error instanceof HttpException
             ? error.message
-            : 'Failed to calculate balance profitability',
+            : 'Failed to fetch performance summary',
       };
       return new BaseResponseDto(
         false,
         errorData,
-        'Failed to calculate balance profitability',
+        'Failed to fetch performance summary',
       );
     }
   }
