@@ -7,7 +7,8 @@ import {
   MyfxbookApiResponse,
 } from './dto/myfxbook-response.dto';
 import { LoginDto } from './dto/login.dto';
-import { calculateDifference, calculateDifferences } from 'src/common/utils/session.utils';
+import { calculateDifference, calculateDifferences, validateAndDecodeSession } from 'src/common/utils/session.utils';
+import { CacheService } from '../cache/cache.service';
 
 @Injectable()
 export class MyfxbookService {
@@ -15,15 +16,64 @@ export class MyfxbookService {
   private readonly apiUrl: string;
   private readonly defaultEmail: string;
   private readonly defaultPassword: string;
+  private readonly sessionCacheKey = 'myfxbook:session:default';
+  private readonly redisTtlSeconds: number;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
+    private readonly cacheService: CacheService,
   ) {
     this.apiUrl = this.configService.get<string>('myfxbook.apiUrl') || '';
     this.defaultEmail = this.configService.get<string>('myfxbook.email') || '';
     this.defaultPassword =
       this.configService.get<string>('myfxbook.password') || '';
+    this.redisTtlSeconds =
+      this.configService.get<number>('redis.ttl') || 300; // Default 5 minutes
+  }
+
+  /**
+   * Get a cached session or login to create one (auto-cached)
+   * This allows backend-managed sessions without requiring the client to pass one.
+   */
+  private async getOrCreateSession(): Promise<string> {
+    const cachedSession = await this.cacheService.get<string>(
+      this.sessionCacheKey,
+    );
+    if (cachedSession) {
+      this.logger.debug('Using cached Myfxbook session');
+      return cachedSession;
+    }
+
+    this.logger.debug('No cached Myfxbook session found, logging in...');
+    const session = await this.login();
+    if (!session) {
+      throw new HttpException(
+        'Failed to obtain Myfxbook session',
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+
+    await this.cacheService.set(this.sessionCacheKey, session, this.redisTtlSeconds);
+    return session;
+  }
+
+  /**
+   * Clear cached session (used on logout or when forcing refresh)
+   */
+  private async clearCachedSession(): Promise<void> {
+    await this.cacheService.del(this.sessionCacheKey);
+  }
+
+  /**
+   * Resolve session: use provided one or fetch cached / new automatically
+   */
+  private async resolveSession(session?: string): Promise<string> {
+    if (session) {
+      this.validateSession(session);
+      return session;
+    }
+    return this.getOrCreateSession();
   }
 
   /**
@@ -171,52 +221,28 @@ export class MyfxbookService {
     }
   }
 
-  /**
-   * Logout from Myfxbook API
-   * @param session - Session token to invalidate
-   * @returns Logout result
-   */
-  async logout(session: string): Promise<any> {
-    try {
-      this.validateSession(session);
-
-      const response = await this.makeAuthenticatedRequest(
-        'logout.json',
-        session,
-      );
-
-      if (response.error) {
-        const errorMessage = response.message || 'Failed to logout';
-        throw new HttpException(
-          `Failed to logout: ${errorMessage}`,
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-
-      return response;
-    } catch (error) {
-      if (error instanceof HttpException) {
-        throw error;
-      }
-      throw new HttpException(
-        `Failed to logout: ${error.message}`,
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
 
   /**
    * Get user's Myfxbook accounts
    * @param session - Session token
    * @returns List of user accounts
    */
-  async getMyAccounts(session: string): Promise<any> {
+  async getMyAccounts(session?: string): Promise<any> {
     try {
-      this.validateSession(session);
+      const resolvedSession = await this.resolveSession(session);
+      const decoded = validateAndDecodeSession(resolvedSession)
+      const cacheKey = this.cacheService.generateKey('myfxbook:accounts', resolvedSession);
+      const cached = await this.cacheService.get<any>(cacheKey);
+      
+      if (cached) {
+        this.logger.debug('Cache hit for getMyAccounts');
+        return cached;
+      }
 
+      this.logger.debug('Cache miss for getMyAccounts, fetching from API');
       const response = await this.makeAuthenticatedRequest(
         'get-my-accounts.json',
-        session,
+        decoded,
       );
 
       if (response.error) {
@@ -227,6 +253,8 @@ export class MyfxbookService {
         );
       }
 
+      // Cache successful response
+      await this.cacheService.set(cacheKey, response);
       return response;
     } catch (error) {
       if (error instanceof HttpException) {
@@ -244,16 +272,25 @@ export class MyfxbookService {
    * @param session - Session token
    * @returns Aggregated account statistics (total balance, total profit, average monthly gain)
    */
-  async getAggregatedAccounts(session: string): Promise<{
+  async getAggregatedAccounts(): Promise<{
     totalBalance: number;
     totalProfit: number;
     averageMonthlyReturn: number;
-    totalAccounts: number;
   }> {
     try {
-      this.validateSession(session);
+      const resolvedSession = await this.resolveSession();
+      const decoded = validateAndDecodeSession(resolvedSession)
 
-      const accountsResponse = await this.getMyAccounts(session);
+      const cacheKey = this.cacheService.generateKey('myfxbook:aggregated', resolvedSession);
+      const cached = await this.cacheService.get<any>(cacheKey);
+      
+      if (cached) {
+        this.logger.debug('Cache hit for getAggregatedAccounts');
+        return cached;
+      }
+
+      this.logger.debug('Cache miss for getAggregatedAccounts, fetching from API');
+      const accountsResponse = await this.getMyAccounts(decoded);
       const accounts = accountsResponse?.accounts || [];
 
       if (!Array.isArray(accounts) || accounts.length === 0) {
@@ -261,7 +298,6 @@ export class MyfxbookService {
           totalBalance: 0,
           totalProfit: 0,
           averageMonthlyReturn: 0,
-          totalAccounts: 0,
         };
       }
 
@@ -291,12 +327,15 @@ export class MyfxbookService {
       const averageMonthlyReturnPercentage =
         accountsWithMonthly > 0 ? averageMonthlyReturn / accountsWithMonthly : 0;
 
-      return {
+      const result = {
         totalBalance: Number(totalBalance.toFixed(2)),
         totalProfit: Number(totalProfit.toFixed(2)),
         averageMonthlyReturn: Number(averageMonthlyReturnPercentage.toFixed(2)),
-        totalAccounts: accounts.length,
       };
+
+      // Cache successful response
+      await this.cacheService.set(cacheKey, result);
+      return result;
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
@@ -314,14 +353,23 @@ export class MyfxbookService {
    * @param accountId - Account ID
    * @returns Trade history
    */
-  async getHistory(session: string, accountId: string): Promise<any> {
+  async getHistory(session: string | undefined, accountId: string): Promise<any> {
     try {
-      this.validateSession(session);
+      const resolvedSession = await this.resolveSession(session);
       this.validateAccountId(accountId);
 
+      const cacheKey = this.cacheService.generateKey('myfxbook:history', resolvedSession, accountId);
+      const cached = await this.cacheService.get<any>(cacheKey);
+      
+      if (cached) {
+        this.logger.debug('Cache hit for getHistory');
+        return cached;
+      }
+
+      this.logger.debug('Cache miss for getHistory, fetching from API');
       const response = await this.makeAuthenticatedRequest(
         'get-history.json',
-        session,
+        resolvedSession,
         { id: accountId },
       );
 
@@ -333,6 +381,8 @@ export class MyfxbookService {
         );
       }
 
+      // Cache successful response
+      await this.cacheService.set(cacheKey, response);
       return response;
     } catch (error) {
       if (error instanceof HttpException) {
@@ -407,7 +457,7 @@ export class MyfxbookService {
    * @returns Average trade length statistics
    */
   async getAverageTradeLength(
-    session: string,
+    session: string | undefined,
     accountId: string,
   ): Promise<{
     averageTradeLengthMs: number;
@@ -415,10 +465,25 @@ export class MyfxbookService {
     totalTrades: number;
   }> {
     try {
-      this.validateSession(session);
+      const resolvedSession = await this.resolveSession(session);
+      const decoded = validateAndDecodeSession(resolvedSession)
+
       this.validateAccountId(accountId);
 
-      const historyResponse = await this.getHistory(session, accountId);
+      const cacheKey = this.cacheService.generateKey('myfxbook:trade-length', resolvedSession, accountId);
+      const cached = await this.cacheService.get<{
+        averageTradeLengthMs: number;
+        averageTradeLengthFormatted: string;
+        totalTrades: number;
+      }>(cacheKey);
+      
+      if (cached) {
+        this.logger.debug('Cache hit for getAverageTradeLength');
+        return cached;
+      }
+
+      this.logger.debug('Cache miss for getAverageTradeLength, fetching from API');
+      const historyResponse = await this.getHistory(decoded, accountId);
 
       // Try to find history records in different possible locations
       let records: any[] = [];
@@ -480,11 +545,15 @@ export class MyfxbookService {
       const averageTradeLengthMs =
         validTrades > 0 ? totalTradeLengthMs / validTrades : 0;
 
-      return {
+      const result = {
         averageTradeLengthMs: Math.round(averageTradeLengthMs),
         averageTradeLengthFormatted: this.formatDuration(averageTradeLengthMs),
         totalTrades: records.length,
       };
+
+      // Cache successful response
+      await this.cacheService.set(cacheKey, result);
+      return result;
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
@@ -505,20 +574,18 @@ export class MyfxbookService {
    * @returns Profitability data
    */
   async getBalanceProfitability(
-    session: string,
+    session: string | undefined,
     accountId: string,
     startDate: string,
     endDate: string,
   ): Promise<{
-    startBalance: number;
-    endBalance: number;
     profitabilityPercent: number;
-    peakBalance: number;
-    troughBalance: number;
     drawdownPercent: number;
   }> {
     try {
-      this.validateSession(session);
+      const resolvedSession = await this.resolveSession(session);
+      const decoded = validateAndDecodeSession(resolvedSession)
+
       this.validateAccountId(accountId);
 
       if (!startDate || !endDate) {
@@ -528,8 +595,20 @@ export class MyfxbookService {
         );
       }
 
+      const cacheKey = this.cacheService.generateKey('myfxbook:profitability', resolvedSession, accountId, startDate, endDate);
+      const cached = await this.cacheService.get<{
+        profitabilityPercent: number;
+        drawdownPercent: number;
+      }>(cacheKey);
+      
+      if (cached) {
+        this.logger.debug('Cache hit for getBalanceProfitability');
+        return cached;
+      }
+
+      this.logger.debug('Cache miss for getBalanceProfitability, fetching from API');
       const dataDaily = await this.getDataDaily(
-        session,
+        decoded,
         accountId,
         startDate,
         endDate,
@@ -568,11 +647,7 @@ export class MyfxbookService {
 
       if (normalized.length === 0) {
         return {
-          startBalance: 0,
-          endBalance: 0,
           profitabilityPercent: 0,
-          peakBalance: 0,
-          troughBalance: 0,
           drawdownPercent: 0,
         };
       }
@@ -688,14 +763,14 @@ export class MyfxbookService {
       const drawdown =
         peakBalance !== 0 ? (peakBalance - troughBalance) / peakBalance : 0;
 
-      return {
-        startBalance: Number(startBalance.toFixed(2)),
-        endBalance: Number(endBalance.toFixed(2)),
+      const result = {
         profitabilityPercent: Number((profitability * 100).toFixed(2)),
-        peakBalance: Number(peakBalance.toFixed(2)),
-        troughBalance: Number(troughBalance.toFixed(2)),
         drawdownPercent: Number((drawdown * 100).toFixed(2)),
       };
+
+      // Cache successful response
+      await this.cacheService.set(cacheKey, result);
+      return result;
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
@@ -716,15 +791,25 @@ export class MyfxbookService {
   * @returns Daily data
   */
   async getDataDaily(
-    session: string,
+    session: string | undefined,
     accountId: string,
     startDate: string,
     endDate: string,
   ): Promise<any> {
     try {
-      this.validateSession(session);
+      const resolvedSession = await this.resolveSession(session);
+      const decoded = validateAndDecodeSession(resolvedSession)
       this.validateAccountId(accountId);
 
+      const cacheKey = this.cacheService.generateKey('myfxbook:daily', resolvedSession, accountId, startDate, endDate);
+      const cached = await this.cacheService.get<any>(cacheKey);
+      
+      if (cached) {
+        this.logger.debug('Cache hit for getDataDaily');
+        return cached;
+      }
+
+      this.logger.debug('Cache miss for getDataDaily, fetching from API');
       const params: Record<string, any> = {
         id: accountId,
       };
@@ -739,7 +824,7 @@ export class MyfxbookService {
 
       const response: any = await this.makeAuthenticatedRequest(
         'get-data-daily.json',
-        session,
+        decoded,
         params,
       );
 
@@ -779,10 +864,14 @@ export class MyfxbookService {
       }
 
       // Add totalProfite to the response
-      return {
+      const result = {
         ...response,
         totalProfit: Number(totalProfit.toFixed(2)),
       };
+
+      // Cache successful response
+      await this.cacheService.set(cacheKey, result);
+      return result;
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
@@ -862,12 +951,22 @@ export class MyfxbookService {
    * Call get-gain API for a specific date range
    */
   private async getGainForPeriod(
-    session: string,
+    session: string | undefined,
     accountId: string,
     startDate: string,
     endDate: string,
   ): Promise<{ gain: number; startDate: string; endDate: string }> {
     try {
+      const resolvedSession = await this.resolveSession(session);
+      const cacheKey = this.cacheService.generateKey('myfxbook:gain', resolvedSession, accountId, startDate, endDate);
+      const cached = await this.cacheService.get<{ gain: number; startDate: string; endDate: string }>(cacheKey);
+      
+      if (cached) {
+        this.logger.debug('Cache hit for getGainForPeriod');
+        return cached;
+      }
+
+      this.logger.debug('Cache miss for getGainForPeriod, fetching from API');
       const params: Record<string, any> = {
         id: accountId,
         start: startDate,
@@ -876,7 +975,7 @@ export class MyfxbookService {
 
       const response = await this.makeAuthenticatedRequest(
         'get-gain.json',
-        session,
+        resolvedSession,
         params,
       );
 
@@ -888,7 +987,11 @@ export class MyfxbookService {
       }
 
       const gain = this.extractGainValue(response);
-      return { gain, startDate, endDate };
+      const result = { gain, startDate, endDate };
+      
+      // Cache successful response
+      await this.cacheService.set(cacheKey, result);
+      return result;
     } catch (error) {
       this.logger.error(
         `Error fetching gain for ${startDate} to ${endDate}: ${error.message}`,
@@ -904,7 +1007,7 @@ export class MyfxbookService {
    * @returns Gain comparison data for all periods
    */
   async getGainComparisons(
-    session: string,
+    session: string | undefined,
     accountId: string,
   ): Promise<{
     today: {
@@ -921,8 +1024,24 @@ export class MyfxbookService {
     };
   }> {
     try {
-      this.validateSession(session);
+      const resolvedSession = await this.resolveSession(session);
+      const decoded = validateAndDecodeSession(resolvedSession)
       this.validateAccountId(accountId);
+
+      const cacheKey = this.cacheService.generateKey('myfxbook:gain-comparisons', resolvedSession, accountId);
+      const cached = await this.cacheService.get<{
+        today: { differencePercent: number };
+        thisWeek: { differencePercent: number };
+        thisMonth: { differencePercent: number };
+        thisYear: { differencePercent: number };
+      }>(cacheKey);
+      
+      if (cached) {
+        this.logger.debug('Cache hit for getGainComparisons');
+        return cached;
+      }
+
+      this.logger.debug('Cache miss for getGainComparisons, fetching from API');
 
       const now = new Date();
       const today = new Date(now);
@@ -934,8 +1053,8 @@ export class MyfxbookService {
       const todayStr = this.formatDate(today);
       const yesterdayStr = this.formatDate(yesterday);
       const [todayGain, yesterdayGain] = await Promise.all([
-        this.getGainForPeriod(session, accountId, todayStr, todayStr),
-        this.getGainForPeriod(session, accountId, yesterdayStr, yesterdayStr),
+        this.getGainForPeriod(decoded, accountId, todayStr, todayStr),
+        this.getGainForPeriod(decoded, accountId, yesterdayStr, yesterdayStr),
       ]);
 
       // This week vs Previous week
@@ -947,13 +1066,13 @@ export class MyfxbookService {
 
       const [thisWeekGain, previousWeekGain] = await Promise.all([
         this.getGainForPeriod(
-          session,
+          resolvedSession,
           accountId,
           this.formatDate(thisWeekStart),
           this.formatDate(thisWeekEnd),
         ),
         this.getGainForPeriod(
-          session,
+          resolvedSession,
           accountId,
           this.formatDate(previousWeekStart),
           this.formatDate(previousWeekEnd),
@@ -969,13 +1088,13 @@ export class MyfxbookService {
 
       const [thisMonthGain, previousMonthGain] = await Promise.all([
         this.getGainForPeriod(
-          session,
+          resolvedSession,
           accountId,
           this.formatDate(thisMonthStart),
           this.formatDate(thisMonthEnd),
         ),
         this.getGainForPeriod(
-          session,
+          resolvedSession,
           accountId,
           this.formatDate(previousMonthStart),
           this.formatDate(previousMonthEnd),
@@ -991,13 +1110,13 @@ export class MyfxbookService {
 
       const [thisYearGain, previousYearGain] = await Promise.all([
         this.getGainForPeriod(
-          session,
+          resolvedSession,
           accountId,
           this.formatDate(thisYearStart),
           this.formatDate(thisYearEnd),
         ),
         this.getGainForPeriod(
-          session,
+          resolvedSession,
           accountId,
           this.formatDate(previousYearStart),
           this.formatDate(previousYearEnd),
@@ -1009,7 +1128,7 @@ export class MyfxbookService {
       const monthDiff = calculateDifference(thisMonthGain, previousMonthGain);
       const yearDiff = calculateDifference(thisYearGain, previousYearGain);
 
-      return {
+      const result = {
         today: {
           ...todayDiff,
         },
@@ -1023,6 +1142,10 @@ export class MyfxbookService {
           ...yearDiff,
         },
       };
+
+      // Cache successful response
+      await this.cacheService.set(cacheKey, result);
+      return result;
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
@@ -1103,12 +1226,23 @@ export class MyfxbookService {
    * @returns Daily data comparison for all periods with profit and pips sums
    */
   async getDailyDataComparisons(
-    session: string,
+    session: string | undefined,
     accountId: string,
   ) {
     try {
-      this.validateSession(session);
+      const resolvedSession = await this.resolveSession(session);
+      const decoded = validateAndDecodeSession(resolvedSession)
       this.validateAccountId(accountId);
+
+      const cacheKey = this.cacheService.generateKey('myfxbook:daily-comparisons', resolvedSession, accountId);
+      const cached = await this.cacheService.get<any>(cacheKey);
+      
+      if (cached) {
+        this.logger.debug('Cache hit for getDailyDataComparisons');
+        return cached;
+      }
+
+      this.logger.debug('Cache miss for getDailyDataComparisons, fetching from API');
 
       const now = new Date();
       const today = new Date(now.setHours(0, 0, 0, 0));
@@ -1116,8 +1250,8 @@ export class MyfxbookService {
       // Generic function for comparing two periods
       const comparePeriods = async (startA :any, endA:any, startB:any, endB:any) => {
         const [dataA, dataB] = await Promise.all([
-          this.getDataDaily(session, accountId, this.formatDate(startA), this.formatDate(endA)),
-          this.getDataDaily(session, accountId, this.formatDate(startB), this.formatDate(endB)),
+          this.getDataDaily(decoded, accountId, this.formatDate(startA), this.formatDate(endA)),
+          this.getDataDaily(decoded, accountId, this.formatDate(startB), this.formatDate(endB)),
         ]);
 
         return calculateDifferences(
@@ -1155,12 +1289,16 @@ export class MyfxbookService {
       const prevYearStart = this.getStartOfYear(prevYearEnd);
       const yearDiff = await comparePeriods(thisYearStart, thisYearEnd, prevYearStart, prevYearEnd);
 
-      return {
+      const result = {
         today: todayDiff,
         thisWeek: weekDiff,
         thisMonth: monthDiff,
         thisYear: yearDiff,
       };
+
+      // Cache successful response
+      await this.cacheService.set(cacheKey, result);
+      return result;
 
     } catch (error) {
       throw new HttpException(

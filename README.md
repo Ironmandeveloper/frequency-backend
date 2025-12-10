@@ -37,19 +37,73 @@ CORS_ORIGIN=*
 MYFXBOOK_API_URL=https://www.myfxbook.com/api
 MYFXBOOK_EMAIL=your-email@example.com
 MYFXBOOK_PASSWORD=your-password
+
+# Redis Cache Configuration (Optional)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_TTL=300
+REDIS_ENABLE_CACHE=true
 ```
 
-5. Start the development server:
+**Note:** If Redis is not configured or unavailable, the application will automatically fall back to in-memory caching, ensuring the application continues to work without disruption.
+
+5. (Optional) Start Redis server for caching:
+```bash
+# Using Docker
+docker run -d -p 6379:6379 redis:latest
+
+# Or install Redis locally and start the service
+redis-server
+```
+
+6. Start the development server:
 ```bash
 npm run start:dev
 ```
 
 The application will be available at `http://localhost:3000/api`
 
-6. Access Swagger documentation:
+7. Access Swagger documentation:
 ```
 http://localhost:3000/api/docs
 ```
+
+## 🔄 Redis Caching
+
+This application includes Redis caching to improve performance and reduce API calls to Myfxbook. The caching is implemented with the following features:
+
+- **Automatic Fallback**: If Redis is unavailable, the application automatically falls back to in-memory caching
+- **Configurable TTL**: Cache expiration time can be configured via `REDIS_TTL` (default: 300 seconds / 5 minutes)
+- **Cache-Aside Pattern**: Data is cached after successful API responses
+- **Session-Based Keys**: Cache keys include session tokens to ensure data isolation
+
+### Redis Configuration
+
+Add these environment variables to your `.env` file:
+
+```env
+REDIS_HOST=localhost          # Redis server host (default: localhost)
+REDIS_PORT=6379               # Redis server port (default: 6379)
+REDIS_PASSWORD=               # Redis password (optional)
+REDIS_TTL=300                 # Cache TTL in seconds (default: 300)
+REDIS_ENABLE_CACHE=true       # Enable/disable caching (default: true)
+```
+
+**Note**: If Redis is not configured or unavailable, the application will automatically fall back to in-memory caching, ensuring the application continues to work without disruption.
+
+### Cached Endpoints
+
+The following endpoints are cached:
+- `GET /api/myfxbook/get-my-accounts` - Cached by session
+- `GET /api/myfxbook/get-aggregated-accounts` - Cached by session
+- `GET /api/myfxbook/get-average-trade-length` - Cached by session and account ID
+- `GET /api/myfxbook/get-balance-profitability` - Cached by session, account ID, and date range
+- `GET /api/myfxbook/get-data-daily` - Cached by session, account ID, and date range
+- `GET /api/myfxbook/get-gain-comparisons` - Cached by session and account ID
+- `GET /api/myfxbook/get-daily-data-comparisons` - Cached by session and account ID
+
+**Note**: Login and logout endpoints are NOT cached for security reasons.
 
 ## 📁 Project Structure
 
@@ -62,6 +116,9 @@ frequency-backend/
 │   ├── config/             # Configuration module
 │   │   ├── config.module.ts
 │   │   └── configuration.ts
+│   ├── cache/               # Redis cache module
+│   │   ├── cache.module.ts
+│   │   └── cache.service.ts
 │   ├── myfxbook/           # Myfxbook integration module
 │   │   ├── dto/            # Data Transfer Objects
 │   │   ├── myfxbook.controller.ts
@@ -72,6 +129,7 @@ frequency-backend/
 │   └── main.ts             # Application entry point
 ├── test/                    # E2E tests
 ├── dist/                    # Compiled output
+├── test-redis-cache.ts      # Redis cache test script
 ├── .env.example             # Environment variables template
 ├── .prettierrc              # Prettier configuration
 ├── eslint.config.mjs        # ESLint configuration

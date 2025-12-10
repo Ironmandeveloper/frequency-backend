@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from './config/config.module';
 import { MyfxbookModule } from './myfxbook/myfxbook.module';
+import { CacheModule } from './cache/cache.module';
 
 @Module({
-  imports: [ConfigModule, MyfxbookModule],
+  imports: [ConfigModule, CacheModule, MyfxbookModule],
   controllers: [],
   providers: [],
 })
