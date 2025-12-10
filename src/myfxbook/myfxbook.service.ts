@@ -40,6 +40,7 @@ export class MyfxbookService {
     const cachedSession = await this.cacheService.get<string>(
       this.sessionCacheKey,
     );
+
     if (cachedSession) {
       this.logger.debug('Using cached Myfxbook session');
       return cachedSession;
@@ -272,7 +273,7 @@ export class MyfxbookService {
    * @param session - Session token
    * @returns Aggregated account statistics (total balance, total profit, average monthly gain)
    */
-  async getAggregatedAccounts(): Promise<{
+  async getAggregatedAccounts(accountId: string): Promise<{
     totalBalance: number;
     totalProfit: number;
     averageMonthlyReturn: number;
@@ -292,8 +293,9 @@ export class MyfxbookService {
       this.logger.debug('Cache miss for getAggregatedAccounts, fetching from API');
       const accountsResponse = await this.getMyAccounts(decoded);
       const accounts = accountsResponse?.accounts || [];
-
-      if (!Array.isArray(accounts) || accounts.length === 0) {
+      // Find the account object with matching ID
+      const account = accounts.find((acc:any) => acc.id == accountId);
+      if (!account) {
         return {
           totalBalance: 0,
           totalProfit: 0,
@@ -301,36 +303,10 @@ export class MyfxbookService {
         };
       }
 
-      let totalBalance = 0;
-      let totalProfit = 0;
-      let averageMonthlyReturn = 0;
-      let accountsWithMonthly = 0;
-
-      accounts.forEach((account: any) => {
-        // Sum balances
-        if (account.balance !== undefined && account.balance !== null) {
-          totalBalance += Number(account.balance) || 0;
-        }
-
-        // Sum profits
-        if (account.profit !== undefined && account.profit !== null) {
-          totalProfit += Number(account.profit) || 0;
-        }
-
-        // Calculate average return (monthly return percentage)
-        if (account.monthly !== undefined && account.monthly !== null) {
-          averageMonthlyReturn += Number(account.monthly) || 0;
-          accountsWithMonthly++;
-        }
-      });
-
-      const averageMonthlyReturnPercentage =
-        accountsWithMonthly > 0 ? averageMonthlyReturn / accountsWithMonthly : 0;
-
       const result = {
-        totalBalance: Number(totalBalance.toFixed(2)),
-        totalProfit: Number(totalProfit.toFixed(2)),
-        averageMonthlyReturn: Number(averageMonthlyReturnPercentage.toFixed(2)),
+        totalBalance: Number(account.balance ?? 0),
+        totalProfit: Number(account.profit ?? 0),
+        averageMonthlyReturn: Number(account.monthly ?? 0),
       };
 
       // Cache successful response

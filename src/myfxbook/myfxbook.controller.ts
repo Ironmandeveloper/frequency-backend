@@ -51,16 +51,25 @@ export class MyfxbookController {
 
   @Get('get-aggregated-accounts')
   @HttpCode(HttpStatus.OK)
+  @ApiQuery({
+    name: 'id',
+    required: true,
+    description: 'Account ID from Myfxbook',
+    type: String,
+    example: '12345',
+    schema: { type: 'string', minLength: 1 },
+  })
   @ApiOperation({
-    summary: 'Get total balance, total profit, average monthly return on the base my myfx session',
+    summary: 'Get total balance, total profit, average monthly return on the base my myfx account',
     description:
       'Retrieves aggregated statistics; session is managed automatically via backend cache.',
   })
   async getAggregatedAccounts(
+    @Query('id') accountId: string,
   ): Promise<BaseResponseDto<AggregatedAccountsDto | any>> {
     try {
       const aggregatedData =
-        await this.myfxbookService.getAggregatedAccounts();
+        await this.myfxbookService.getAggregatedAccounts(accountId);
 
       return new BaseResponseDto(
         true,
@@ -80,6 +89,67 @@ export class MyfxbookController {
         errorData,
         'Failed to fetch aggregated accounts',
       );
+    }
+  }
+
+  @Get('get-data-daily')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get daily data for a risk account and total profit for chart on the base of start date and end date',
+    description:
+      'Retrieves daily data for a specific account between the specified date range. Session is handled automatically; client does not need to pass it.',
+  })
+  @ApiQuery({
+    name: 'id',
+    required: true,
+    description: 'Account ID from Myfxbook',
+    type: String,
+    example: '12345',
+    schema: { type: 'string', minLength: 1 },
+  })
+  @ApiQuery({
+    name: 'start',
+    required: true,
+    description: 'Start date in format YYYY-MM-DD',
+    type: String,
+    example: '2000-01-01',
+    schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
+  })
+  @ApiQuery({
+    name: 'end',
+    required: true,
+    description: 'End date in format YYYY-MM-DD',
+    type: String,
+    example: '2010-01-01',
+    schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
+  })
+  async getDataDaily(
+    @Query('id') accountId: string,
+    @Query('start') startDate: string,
+    @Query('end') endDate: string,
+  ): Promise<BaseResponseDto<any>> {
+    try {
+
+      const dataDailyData = await this.myfxbookService.getDataDaily(
+        undefined,
+        accountId,
+        startDate,
+        endDate,
+      );
+      return new BaseResponseDto(
+        true,
+        dataDailyData,
+        'Daily data retrieved successfully',
+      );
+    } catch (error) {
+      const errorData = {
+        error: true,
+        message:
+          error instanceof HttpException
+            ? error.message
+            : 'Failed to fetch daily data',
+      };
+      return new BaseResponseDto(false, errorData, 'Failed to fetch daily data');
     }
   }
 
@@ -148,68 +218,7 @@ export class MyfxbookController {
       );
     }
   }
-  
 
-  @Get('get-data-daily')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Get daily data for a risk account and total profit for chart on the base of start date and end date',
-    description:
-      'Retrieves daily data for a specific account between the specified date range. Session is handled automatically; client does not need to pass it.',
-  })
-  @ApiQuery({
-    name: 'id',
-    required: true,
-    description: 'Account ID from Myfxbook',
-    type: String,
-    example: '12345',
-    schema: { type: 'string', minLength: 1 },
-  })
-  @ApiQuery({
-    name: 'start',
-    required: true,
-    description: 'Start date in format YYYY-MM-DD',
-    type: String,
-    example: '2000-01-01',
-    schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
-  })
-  @ApiQuery({
-    name: 'end',
-    required: true,
-    description: 'End date in format YYYY-MM-DD',
-    type: String,
-    example: '2010-01-01',
-    schema: { type: 'string', pattern: '\\d{4}-\\d{2}-\\d{2}' },
-  })
-  async getDataDaily(
-    @Query('id') accountId: string,
-    @Query('start') startDate: string,
-    @Query('end') endDate: string,
-  ): Promise<BaseResponseDto<any>> {
-    try {
-
-      const dataDailyData = await this.myfxbookService.getDataDaily(
-        undefined,
-        accountId,
-        startDate,
-        endDate,
-      );
-      return new BaseResponseDto(
-        true,
-        dataDailyData,
-        'Daily data retrieved successfully',
-      );
-    } catch (error) {
-      const errorData = {
-        error: true,
-        message:
-          error instanceof HttpException
-            ? error.message
-            : 'Failed to fetch daily data',
-      };
-      return new BaseResponseDto(false, errorData, 'Failed to fetch daily data');
-    }
-  }
 
 
   @Get('get-data-comparisons')

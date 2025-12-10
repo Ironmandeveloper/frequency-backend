@@ -10,6 +10,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './src/app.module';
 import { CacheService } from './src/cache/cache.service';
 import { Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 async function testRedisCache() {
   const logger = new Logger('RedisCacheTest');
@@ -20,6 +21,40 @@ async function testRedisCache() {
     // Create NestJS application
     const app = await NestFactory.createApplicationContext(AppModule);
     const cacheService = app.get(CacheService);
+    const configService = app.get(ConfigService);
+    
+    // Check Redis configuration
+    const redisConfig = configService.get('redis');
+    const enableCache = redisConfig?.enableCache !== false;
+    const redisHost = redisConfig?.host || 'localhost';
+    const redisPort = redisConfig?.port || 6379;
+    
+    logger.log(`\n📋 Redis Configuration:`);
+    logger.log(`   Host: ${redisHost}`);
+    logger.log(`   Port: ${redisPort}`);
+    logger.log(`   Cache Enabled: ${enableCache}`);
+    logger.log(`   TTL: ${redisConfig?.ttl || 300} seconds`);
+    
+    // Try to detect if Redis is actually connected
+    logger.log(`\n🔍 Checking Redis connection...`);
+    try {
+      // Test Redis connection by setting and getting a test key
+      const connectionTestKey = 'redis:connection:test';
+      await cacheService.set(connectionTestKey, 'connected', 1);
+      const testValue = await cacheService.get(connectionTestKey);
+      
+      if (testValue === 'connected') {
+        logger.log(`✅ Redis is CONNECTED and working!`);
+        logger.log(`   Cache is using Redis store`);
+      } else {
+        logger.warn(`⚠️  Redis connection test returned unexpected value`);
+        logger.warn(`   Cache might be using in-memory fallback`);
+      }
+      await cacheService.del(connectionTestKey);
+    } catch (error) {
+      logger.warn(`⚠️  Redis connection test failed: ${error.message}`);
+      logger.warn(`   Cache is using in-memory fallback`);
+    }
     
     // Test 1: Basic cache set/get
     logger.log('Test 1: Basic cache set/get');
