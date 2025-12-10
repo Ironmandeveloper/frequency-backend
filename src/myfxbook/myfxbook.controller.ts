@@ -49,7 +49,7 @@ export class MyfxbookController {
     }
   }
 
-  @Get('get-aggregated-accounts')
+  @Get('get-accounts-balance')
   @HttpCode(HttpStatus.OK)
   @ApiQuery({
     name: 'id',
@@ -92,7 +92,7 @@ export class MyfxbookController {
     }
   }
 
-  @Get('get-data-daily')
+  @Get('get-chart-profit')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Get daily data for a risk account and total profit for chart on the base of start date and end date',
@@ -153,7 +153,7 @@ export class MyfxbookController {
     }
   }
 
-  @Get('get-data-comparisons')
+  @Get('get-gain-pips-profit')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Get gain, profit difference, pips differencs on the base of today, this weeek, this month and this year',
@@ -171,7 +171,7 @@ export class MyfxbookController {
   }
 
 
-  @Get('get-performance-summary')
+  @Get('get-profitability-trade')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Get balance profitability, total trades, drawdon and average trade length together of the specific risk account',
