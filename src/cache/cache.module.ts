@@ -15,7 +15,7 @@ import { CacheService } from './cache.service';
         if (!enableCache) {
           // Return in-memory cache if Redis is disabled
           return {
-            ttl: redisConfig?.ttl || 300,
+            ttl: redisConfig?.ttl || 30,
           };
         }
 
@@ -30,13 +30,13 @@ import { CacheService } from './cache.service';
 
           return {
             store: store as any,
-            ttl: redisConfig?.ttl || 300, // Default 5 minutes
+            ttl: redisConfig?.ttl || 30, // Default 30 seconds
           };
         } catch (error) {
           // Fallback to in-memory cache if Redis connection fails
           console.warn('Redis connection failed, falling back to in-memory cache:', error.message);
           return {
-            ttl: redisConfig?.ttl || 300,
+            ttl: redisConfig?.ttl || 30,
           };
         }
       },

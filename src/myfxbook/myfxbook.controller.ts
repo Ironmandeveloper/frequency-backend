@@ -153,6 +153,23 @@ export class MyfxbookController {
     }
   }
 
+  @Get('get-data-comparisons')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get gain, profit difference, pips differencs on the base of today, this weeek, this month and this year',
+    description:
+      'Get gain, profit difference, pips differencs on the base of today, this weeek, this month and this year',
+  })
+  async getAll(
+    @Query('accountId') accountId?: string,
+  ) {
+    if (!accountId) {
+      throw new HttpException('accountId is required', HttpStatus.BAD_REQUEST);
+    }
+
+    return this.myfxbookService.getAllComparisons(undefined, accountId);
+  }
+
 
   @Get('get-performance-summary')
   @HttpCode(HttpStatus.OK)
@@ -219,23 +236,5 @@ export class MyfxbookController {
     }
   }
 
-
-
-  @Get('get-data-comparisons')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Get gain, profit difference, pips differencs on the base of today, this weeek, this month and this year',
-    description:
-      'Get gain, profit difference, pips differencs on the base of today, this weeek, this month and this year',
-  })
-  async getAll(
-    @Query('accountId') accountId?: string,
-  ) {
-    if (!accountId) {
-      throw new HttpException('accountId is required', HttpStatus.BAD_REQUEST);
-    }
-
-    return this.myfxbookService.getAllComparisons(undefined, accountId);
-  }
 }
 

@@ -42,7 +42,7 @@ MYFXBOOK_PASSWORD=your-password
 REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_PASSWORD=
-REDIS_TTL=300
+REDIS_TTL=30
 REDIS_ENABLE_CACHE=true
 ```
 
@@ -74,7 +74,7 @@ http://localhost:3000/api/docs
 This application includes Redis caching to improve performance and reduce API calls to Myfxbook. The caching is implemented with the following features:
 
 - **Automatic Fallback**: If Redis is unavailable, the application automatically falls back to in-memory caching
-- **Configurable TTL**: Cache expiration time can be configured via `REDIS_TTL` (default: 300 seconds / 5 minutes)
+- **Configurable TTL**: Cache expiration time can be configured via `REDIS_TTL` (default: 30 seconds)
 - **Cache-Aside Pattern**: Data is cached after successful API responses
 - **Session-Based Keys**: Cache keys include session tokens to ensure data isolation
 
@@ -86,7 +86,7 @@ Add these environment variables to your `.env` file:
 REDIS_HOST=localhost          # Redis server host (default: localhost)
 REDIS_PORT=6379               # Redis server port (default: 6379)
 REDIS_PASSWORD=               # Redis password (optional)
-REDIS_TTL=300                 # Cache TTL in seconds (default: 300)
+REDIS_TTL=30                 # Cache TTL in seconds (default: 30)
 REDIS_ENABLE_CACHE=true       # Enable/disable caching (default: true)
 ```
 

@@ -10,7 +10,7 @@ export const configuration = () => ({
     host: process.env.REDIS_HOST || 'localhost',
     port: parseInt(process.env.REDIS_PORT || '6379', 10),
     password: process.env.REDIS_PASSWORD || undefined,
-    ttl: parseInt(process.env.REDIS_TTL || '300', 10), // Default 5 minutes
+    ttl: parseInt(process.env.REDIS_TTL || '30', 10), // Default 
     enableCache: process.env.REDIS_ENABLE_CACHE !== 'false', // Default true
   },
 });

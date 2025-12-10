@@ -33,7 +33,7 @@ async function testRedisCache() {
     logger.log(`   Host: ${redisHost}`);
     logger.log(`   Port: ${redisPort}`);
     logger.log(`   Cache Enabled: ${enableCache}`);
-    logger.log(`   TTL: ${redisConfig?.ttl || 300} seconds`);
+    logger.log(`   TTL: ${redisConfig?.ttl || 30} seconds`);
     
     // Try to detect if Redis is actually connected
     logger.log(`\n🔍 Checking Redis connection...`);
