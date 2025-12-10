@@ -246,7 +246,15 @@ export class MyfxbookService {
       }
 
       // Cache successful response
-      await this.cacheService.set(cacheKey, response);
+      this.logger.debug(`Attempting to cache response for key: ${cacheKey}`);
+      const cacheSuccess = await this.cacheService.set(cacheKey, response);
+      
+      if (cacheSuccess) {
+        this.logger.debug('Response successfully cached in Redis');
+      } else {
+        this.logger.warn('Failed to cache response in Redis - data will not be cached');
+      }
+      
       return response;
     } catch (error) {
       if (error instanceof HttpException) {

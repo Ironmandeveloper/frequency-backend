@@ -7,12 +7,14 @@ import { ConfigService } from '@nestjs/config';
 export class CacheService {
   private readonly logger = new Logger(CacheService.name);
   private readonly enableCache: boolean;
+  private readonly defaultTtlSeconds: number;
 
   constructor(
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private readonly configService: ConfigService,
   ) {
     this.enableCache = this.configService.get('redis.enableCache') !== false;
+    this.defaultTtlSeconds = this.configService.get<number>('redis.ttl') || 30;
   }
 
   /**
@@ -41,18 +43,32 @@ export class CacheService {
    * @param ttl - Time to live in seconds (optional, uses default if not provided)
    * Note: cache-manager expects TTL in milliseconds, so we convert seconds to milliseconds
    */
-  async set(key: string, value: any, ttl?: number): Promise<void> {
+  async set(key: string, value: any, ttl?: number): Promise<boolean> {
     // if (!this.enableCache) {
-    //   return;
+    //   return false;
     // }
 
     try {
-      // Convert seconds to milliseconds for cache-manager
-      const ttlMs = ttl ? ttl * 1000 : undefined;
+      // Use provided TTL or default TTL, always convert seconds to milliseconds
+      const ttlSeconds = ttl ?? this.defaultTtlSeconds;
+      const ttlMs = ttlSeconds * 1000;
+      
       await this.cacheManager.set(key, value, ttlMs);
-      this.logger.debug(`Cache set successful for key: ${key}, TTL: ${ttl}s (${ttlMs}ms)`);
+      
+      // Verify the value was actually stored
+      const verification = await this.cacheManager.get(key);
+      const success = verification !== null && verification !== undefined;
+      
+      if (success) {
+        this.logger.debug(`Cache set successful for key: ${key}, TTL: ${ttlSeconds}s (${ttlMs}ms)`);
+      } else {
+        this.logger.warn(`Cache set failed verification for key: ${key} - value not found after storage`);
+      }
+      
+      return success;
     } catch (error) {
-      this.logger.warn(`Cache set error for key ${key}: ${error.message}`);
+      this.logger.error(`Cache set error for key ${key}: ${error.message}`, error.stack);
+      return false;
     }
   }
 
