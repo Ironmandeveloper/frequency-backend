@@ -37,7 +37,7 @@ export class MyfxbookService {
     this.defaultPassword =
       this.configService.get<string>('myfxbook.password') || '';
     this.redisTtlSeconds =
-      this.configService.get<number>('redis.ttl') || 30; 
+      this.configService.get<number>('redis.ttl') || 30;
   }
 
   /**
@@ -51,11 +51,11 @@ export class MyfxbookService {
    */
   private isSessionExpiredError(error: any): boolean {
     if (!error) return false;
-    
+
     // Check for common session expiration messages
     const errorMessage = error.message?.toLowerCase() || '';
     const errorResponse = error.response?.data;
-    
+
     const sessionErrorPatterns = [
       'invalid session',
       'session expired',
@@ -63,12 +63,12 @@ export class MyfxbookService {
       'unauthorized',
       'authentication failed',
     ];
-    
+
     // Check error message
     if (sessionErrorPatterns.some(pattern => errorMessage.includes(pattern))) {
       return true;
     }
-    
+
     // Check API response error
     if (errorResponse?.error && errorResponse?.message) {
       const responseMessage = errorResponse.message.toLowerCase();
@@ -76,12 +76,12 @@ export class MyfxbookService {
         return true;
       }
     }
-    
+
     // Check HTTP status code (401 Unauthorized usually means session expired)
     if (error.response?.status === 401) {
       return true;
     }
-    
+
     return false;
   }
 
@@ -97,7 +97,7 @@ export class MyfxbookService {
       this.sessionCacheKey,
     );
     this.logger.debug(`Checking Redis for session with key: ${this.sessionCacheKey}`);
-    
+
     if (cachedData?.session) {
       this.logger.debug('Found cached session in Redis - using it without validation');
       this.logger.debug(`Session created at: ${new Date(cachedData.createdAt).toISOString()}`);
@@ -114,29 +114,29 @@ export class MyfxbookService {
    */
   private async createAndStoreSession(): Promise<string> {
     const session = await this.login();
-    
+
     if (!session) {
       throw new HttpException(
         'Failed to obtain Myfxbook session',
         HttpStatus.UNAUTHORIZED,
       );
     }
-    
+
     // Store session with metadata in Redis permanently
     const sessionMetadata: SessionMetadata = {
       session,
       createdAt: Date.now(),
     };
-    
+
     this.logger.log(`Storing session in Redis permanently with key: ${this.sessionCacheKey}`);
     const cacheSuccess = await this.cacheService.setPermanent(this.sessionCacheKey, sessionMetadata);
-    
+
     if (cacheSuccess) {
       this.logger.log('Session successfully stored in Redis (permanent storage, no expiration)');
     } else {
       this.logger.warn('Warning: Session was not found in Redis after storage attempt');
     }
-    
+
     return session;
   }
 
@@ -262,7 +262,7 @@ export class MyfxbookService {
     try {
       const url = `${this.apiUrl}/${endpoint}`;
       const decodedSession = validateAndDecodeSession(session);
-      
+
       const response = await firstValueFrom(
         this.httpService.get<MyfxbookApiResponse<T>>(url, {
           params: {
@@ -293,7 +293,7 @@ export class MyfxbookService {
         // Retry the request with new session (only once to avoid infinite loop)
         return this.makeAuthenticatedRequest<T>(endpoint, newSession, params, false);
       }
-      
+
       // For other errors, throw as usual
       throw new HttpException(
         `Myfxbook API request failed: ${error.message}`,
@@ -320,9 +320,15 @@ export class MyfxbookService {
         return cached;
       }
 
-      const response = await this.makeAuthenticatedRequest(
+      const response:any = await this.makeAuthenticatedRequest(
         'get-my-accounts.json',
         resolvedSession,
+      );
+      // console.log("response", response)
+      const accounts = response?.accounts || [];
+
+      const filteredAccounts = accounts.filter((item) =>
+        item.name?.toLowerCase().includes("risk")
       );
 
       if (response.error) {
@@ -335,15 +341,15 @@ export class MyfxbookService {
 
       // Cache successful response
       this.logger.debug(`Attempting to cache response for key: ${cacheKey}`);
-      const cacheSuccess = await this.cacheService.set(cacheKey, response);
-      
+      const cacheSuccess = await this.cacheService.set(cacheKey, filteredAccounts);
+
       if (cacheSuccess) {
         this.logger.debug('Response successfully cached in Redis');
       } else {
         this.logger.warn('Failed to cache response in Redis - data will not be cached');
       }
-      
-      return response;
+
+      return filteredAccounts;
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
@@ -378,9 +384,10 @@ export class MyfxbookService {
       }
 
       const accountsResponse = await this.getMyAccounts(resolvedSession);
-      const accounts = accountsResponse?.accounts || [];
+   
+      const accounts = accountsResponse || [];
       // Find the account object with matching ID
-      const account = accounts.find((acc:any) => acc.id == accountId);
+      const account = accounts.find((acc: any) => acc.id == accountId);
       if (!account) {
         return {
           totalBalance: 0,
@@ -1372,7 +1379,7 @@ export class MyfxbookService {
         this.logger.debug('Cache hit for endpoint:get-data-comparisons');
         return cached;
       }
-      
+
       const [gain, daily] = await Promise.all([
         this.getGainComparisons(resolvedSession, accountId),
         this.getDailyDataComparisons(resolvedSession, accountId),
@@ -1457,6 +1464,6 @@ export class MyfxbookService {
       );
     }
   }
-  
+
 }
 
