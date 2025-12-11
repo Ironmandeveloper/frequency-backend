@@ -73,6 +73,42 @@ export class CacheService {
   }
 
   /**
+   * Set value in cache without expiration (permanent storage)
+   * Uses a very long TTL (1 days) to simulate permanent storage
+   * @param key - Cache key
+   * @param value - Value to cache
+   * @returns true if successfully stored, false otherwise
+   */
+  async setPermanent(key: string, value: any): Promise<boolean> {
+    // if (!this.enableCache) {
+    //   return false;
+    // }
+
+    try {
+      // Use a very long TTL (1 days in milliseconds) to simulate permanent storage
+      // Redis will keep it until explicitly deleted or if Myfxbook session expires
+      const permanentTtlMs = 1 * 24 * 60 * 60 * 1000; // 1 days in milliseconds
+      
+      await this.cacheManager.set(key, value, permanentTtlMs);
+      
+      // Verify the value was actually stored
+      const verification = await this.cacheManager.get(key);
+      const success = verification !== null && verification !== undefined;
+      
+      if (success) {
+        this.logger.debug(`Permanent cache set successful for key: ${key} (TTL: 1 days)`);
+      } else {
+        this.logger.warn(`Permanent cache set failed verification for key: ${key} - value not found after storage`);
+      }
+      
+      return success;
+    } catch (error) {
+      this.logger.error(`Permanent cache set error for key ${key}: ${error.message}`, error.stack);
+      return false;
+    }
+  }
+
+  /**
    * Delete value from cache
    * @param key - Cache key
    */

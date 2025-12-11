@@ -10,6 +10,14 @@ import { LoginDto } from './dto/login.dto';
 import { calculateDifference, calculateDifferences, validateAndDecodeSession } from 'src/common/utils/session.utils';
 import { CacheService } from '../cache/cache.service';
 
+/**
+ * Interface for session metadata stored in Redis
+ */
+interface SessionMetadata {
+  session: string;
+  createdAt: number; // Unix timestamp in milliseconds
+}
+
 @Injectable()
 export class MyfxbookService {
   private readonly logger = new Logger(MyfxbookService.name);
@@ -37,23 +45,74 @@ export class MyfxbookService {
    * This allows backend-managed sessions without requiring the client to pass one.
    */
   /**
+   * Check if an API error indicates session expiration
+   * @param error - The error object from API call
+   * @returns true if error indicates session expiration
+   */
+  private isSessionExpiredError(error: any): boolean {
+    if (!error) return false;
+    
+    // Check for common session expiration messages
+    const errorMessage = error.message?.toLowerCase() || '';
+    const errorResponse = error.response?.data;
+    
+    const sessionErrorPatterns = [
+      'invalid session',
+      'session expired',
+      'session not found',
+      'unauthorized',
+      'authentication failed',
+    ];
+    
+    // Check error message
+    if (sessionErrorPatterns.some(pattern => errorMessage.includes(pattern))) {
+      return true;
+    }
+    
+    // Check API response error
+    if (errorResponse?.error && errorResponse?.message) {
+      const responseMessage = errorResponse.message.toLowerCase();
+      if (sessionErrorPatterns.some(pattern => responseMessage.includes(pattern))) {
+        return true;
+      }
+    }
+    
+    // Check HTTP status code (401 Unauthorized usually means session expired)
+    if (error.response?.status === 401) {
+      return true;
+    }
+    
+    return false;
+  }
+
+  /**
    * Get a cached session or login to create one (auto-cached)
-   * Session is stored in Redis with key: myfxbook:session:default
+   * Session is stored in Redis permanently (without TTL) with metadata
+   * Uses lazy validation - only refreshes session when API calls fail with session error
+   * This avoids unnecessary validation API calls to Myfxbook
    * All APIs use this cached session from Redis
    */
   private async getOrCreateSession(): Promise<string> {
-    const cachedSession = await this.cacheService.get<string>(
+    const cachedData = await this.cacheService.get<SessionMetadata>(
       this.sessionCacheKey,
     );
     this.logger.debug(`Checking Redis for session with key: ${this.sessionCacheKey}`);
-    this.logger.debug(`Cached session found: ${cachedSession ? 'YES' : 'NO'}`);
     
-    if (cachedSession) {
-      this.logger.debug('Using cached Myfxbook session from Redis');
-      return cachedSession;
+    if (cachedData?.session) {
+      this.logger.debug('Found cached session in Redis - using it without validation');
+      this.logger.debug(`Session created at: ${new Date(cachedData.createdAt).toISOString()}`);
+      return cachedData.session;
     }
 
     this.logger.log('No cached session found, calling login service...');
+    return this.createAndStoreSession();
+  }
+
+  /**
+   * Create a new session and store it in Redis with metadata
+   * @returns The new session token
+   */
+  private async createAndStoreSession(): Promise<string> {
     const session = await this.login();
     
     if (!session) {
@@ -63,14 +122,17 @@ export class MyfxbookService {
       );
     }
     
-    // Store session in Redis for all APIs to use
-    this.logger.log(`Storing session in Redis with key: ${this.sessionCacheKey}, TTL: ${this.redisTtlSeconds}s`);
-    await this.cacheService.set(this.sessionCacheKey, session, this.redisTtlSeconds);
+    // Store session with metadata in Redis permanently
+    const sessionMetadata: SessionMetadata = {
+      session,
+      createdAt: Date.now(),
+    };
     
-    // Verify session was stored
-    const verifySession = await this.cacheService.get<string>(this.sessionCacheKey);
-    if (verifySession) {
-      this.logger.log('Session successfully stored in Redis');
+    this.logger.log(`Storing session in Redis permanently with key: ${this.sessionCacheKey}`);
+    const cacheSuccess = await this.cacheService.setPermanent(this.sessionCacheKey, sessionMetadata);
+    
+    if (cacheSuccess) {
+      this.logger.log('Session successfully stored in Redis (permanent storage, no expiration)');
     } else {
       this.logger.warn('Warning: Session was not found in Redis after storage attempt');
     }
@@ -131,6 +193,7 @@ export class MyfxbookService {
    */
   async login(loginDto?: LoginDto): Promise<string> {
     try {
+      this.logger.log('Login API called - authenticating with Myfxbook...');
       const email = loginDto?.email || this.defaultEmail;
       const password = loginDto?.password || this.defaultPassword;
 
@@ -183,29 +246,55 @@ export class MyfxbookService {
 
   /**
    * Make an authenticated API call to Myfxbook
+   * Automatically handles session expiration by refreshing session and retrying
    * @param endpoint - API endpoint (without base URL)
    * @param session - Session token
    * @param params - Additional parameters
+   * @param retryOnExpiration - Whether to retry with new session if current one is expired (default: true)
    * @returns API response
    */
   async makeAuthenticatedRequest<T = any>(
     endpoint: string,
     session: string,
     params?: Record<string, any>,
+    retryOnExpiration: boolean = true,
   ): Promise<MyfxbookApiResponse<T>> {
     try {
       const url = `${this.apiUrl}/${endpoint}`;
+      const decodedSession = validateAndDecodeSession(session);
+      
       const response = await firstValueFrom(
         this.httpService.get<MyfxbookApiResponse<T>>(url, {
           params: {
-            session,
+            session: decodedSession,
             ...params,
           },
         }),
       );
 
+      // Check if response has error indicating session expiration
+      if (response.data?.error && this.isSessionExpiredError({ message: response.data.message })) {
+        if (retryOnExpiration) {
+          this.logger.warn('Session expired detected in API response, refreshing session and retrying...');
+          await this.clearCachedSession();
+          const newSession = await this.createAndStoreSession();
+          // Retry the request with new session (only once to avoid infinite loop)
+          return this.makeAuthenticatedRequest<T>(endpoint, newSession, params, false);
+        }
+      }
+
       return response.data;
     } catch (error) {
+      // Check if error indicates session expiration
+      if (this.isSessionExpiredError(error) && retryOnExpiration) {
+        this.logger.warn('Session expired detected in API error, refreshing session and retrying...');
+        await this.clearCachedSession();
+        const newSession = await this.createAndStoreSession();
+        // Retry the request with new session (only once to avoid infinite loop)
+        return this.makeAuthenticatedRequest<T>(endpoint, newSession, params, false);
+      }
+      
+      // For other errors, throw as usual
       throw new HttpException(
         `Myfxbook API request failed: ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -222,7 +311,6 @@ export class MyfxbookService {
   async getMyAccounts(session?: string): Promise<any> {
     try {
       const resolvedSession = await this.resolveSession(session);
-      const decoded = validateAndDecodeSession(resolvedSession)
       // Endpoint-based cache key
       const cacheKey = this.cacheService.generateKey('endpoint:get-my-accounts');
       const cached = await this.cacheService.get<any>(cacheKey);
@@ -234,7 +322,7 @@ export class MyfxbookService {
 
       const response = await this.makeAuthenticatedRequest(
         'get-my-accounts.json',
-        decoded,
+        resolvedSession,
       );
 
       if (response.error) {
@@ -279,7 +367,6 @@ export class MyfxbookService {
   }> {
     try {
       const resolvedSession = await this.resolveSession();
-      const decoded = validateAndDecodeSession(resolvedSession)
 
       // Endpoint-based cache key with accountId
       const cacheKey = this.cacheService.generateKey('endpoint:get-aggregated-accounts', accountId);
@@ -290,7 +377,7 @@ export class MyfxbookService {
         return cached;
       }
 
-      const accountsResponse = await this.getMyAccounts(decoded);
+      const accountsResponse = await this.getMyAccounts(resolvedSession);
       const accounts = accountsResponse?.accounts || [];
       // Find the account object with matching ID
       const account = accounts.find((acc:any) => acc.id == accountId);
@@ -440,7 +527,6 @@ export class MyfxbookService {
   }> {
     try {
       const resolvedSession = await this.resolveSession(session);
-      const decoded = validateAndDecodeSession(resolvedSession)
 
       this.validateAccountId(accountId);
 
@@ -456,7 +542,7 @@ export class MyfxbookService {
         return cached;
       }
 
-      const historyResponse = await this.getHistory(decoded, accountId);
+      const historyResponse = await this.getHistory(resolvedSession, accountId);
 
       // Try to find history records in different possible locations
       let records: any[] = [];
@@ -557,7 +643,6 @@ export class MyfxbookService {
   }> {
     try {
       const resolvedSession = await this.resolveSession(session);
-      const decoded = validateAndDecodeSession(resolvedSession)
 
       this.validateAccountId(accountId);
 
@@ -580,7 +665,7 @@ export class MyfxbookService {
       }
 
       const dataDaily = await this.getDataDaily(
-        decoded,
+        resolvedSession,
         accountId,
         startDate,
         endDate,
@@ -770,7 +855,6 @@ export class MyfxbookService {
   ): Promise<any> {
     try {
       const resolvedSession = await this.resolveSession(session);
-      const decoded = validateAndDecodeSession(resolvedSession)
       this.validateAccountId(accountId);
 
       // Endpoint-based cache key
@@ -796,7 +880,7 @@ export class MyfxbookService {
 
       const response: any = await this.makeAuthenticatedRequest(
         'get-data-daily.json',
-        decoded,
+        resolvedSession,
         params,
       );
 
@@ -996,7 +1080,6 @@ export class MyfxbookService {
   }> {
     try {
       const resolvedSession = await this.resolveSession(session);
-      const decoded = validateAndDecodeSession(resolvedSession)
       this.validateAccountId(accountId);
 
       const cacheKey = this.cacheService.generateKey('myfxbook:gain-comparisons', resolvedSession, accountId);
@@ -1022,8 +1105,8 @@ export class MyfxbookService {
       const todayStr = this.formatDate(today);
       const yesterdayStr = this.formatDate(yesterday);
       const [todayGain, yesterdayGain] = await Promise.all([
-        this.getGainForPeriod(decoded, accountId, todayStr, todayStr),
-        this.getGainForPeriod(decoded, accountId, yesterdayStr, yesterdayStr),
+        this.getGainForPeriod(resolvedSession, accountId, todayStr, todayStr),
+        this.getGainForPeriod(resolvedSession, accountId, yesterdayStr, yesterdayStr),
       ]);
 
       // This week vs Previous week
@@ -1217,8 +1300,8 @@ export class MyfxbookService {
       // Generic function for comparing two periods
       const comparePeriods = async (startA: any, endA: any, startB: any, endB: any) => {
         const [dataA, dataB] = await Promise.all([
-          this.getDataDaily(decoded, accountId, this.formatDate(startA), this.formatDate(endA)),
-          this.getDataDaily(decoded, accountId, this.formatDate(startB), this.formatDate(endB)),
+          this.getDataDaily(resolvedSession, accountId, this.formatDate(startA), this.formatDate(endA)),
+          this.getDataDaily(resolvedSession, accountId, this.formatDate(startB), this.formatDate(endB)),
         ]);
 
         return calculateDifferences(
