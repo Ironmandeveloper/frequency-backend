@@ -9,7 +9,7 @@ import {
 import { LoginDto } from './dto/login.dto';
 import { calculateDifference, calculateDifferences, validateAndDecodeSession } from 'src/common/utils/session.utils';
 import { CacheService } from '../cache/cache.service';
-import { DEFAULT_ACCOUNT, EXNESS_ACCOUNT } from 'src/constant/constant';
+import { DEFAULT_ACCOUNT, EXNESS_ACCOUNT, LOW_RISK_ACCOUNT } from 'src/constant/constant';
 
 /**
  * Interface for session metadata stored in Redis
@@ -349,7 +349,19 @@ export class MyfxbookService {
         EXNESS_ACCOUNT.includes(String(item.id))
       );
 
-      const finalResult = [...filteredAccounts, DEFAULT_ACCOUNT];
+      // Add default account
+      let finalResult = [...filteredAccounts, DEFAULT_ACCOUNT];
+
+      // Update name if ID matches LOW_RISK_ACCOUNT
+      finalResult = finalResult.map((item) => {
+        if (LOW_RISK_ACCOUNT.includes(String(item.id))) {
+          return {
+            ...item,
+            name: `FREQ > LOW RISK`,
+          };
+        }
+        return item;
+      });
 
       if (response.error) {
         const errorMessage = response.message || 'Failed to fetch accounts';
@@ -421,7 +433,7 @@ export class MyfxbookService {
         }
 
         const allAccounts = rawResponse?.accounts || [];
-        
+
         // Filter EXNESS accounts only
         const exnessAccounts = allAccounts.filter((account: any) =>
           EXNESS_ACCOUNT.includes(String(account.id))
@@ -447,8 +459,8 @@ export class MyfxbookService {
           totalMonthlyReturn += Number(account.monthly ?? 0);
         });
 
-        const averageMonthlyReturn = exnessAccounts.length > 0 
-          ? totalMonthlyReturn / exnessAccounts.length 
+        const averageMonthlyReturn = exnessAccounts.length > 0
+          ? totalMonthlyReturn / exnessAccounts.length
           : 0;
 
         const result = {
@@ -531,7 +543,7 @@ export class MyfxbookService {
         );
 
         const allResponses = await Promise.all(allHistoryPromises);
-        
+
         // Combine all history records
         let combinedHistory: any[] = [];
         let combinedData: any[] = [];
@@ -1025,7 +1037,7 @@ export class MyfxbookService {
         );
 
         const allResponses: any[] = await Promise.all(allDailyPromises);
-        
+
         // Combine all daily records
         let combinedDataDaily: any[] = [];
         let totalProfit = 0;
@@ -1061,7 +1073,7 @@ export class MyfxbookService {
           totalProfit: Number(totalProfit.toFixed(2)),
           error: false,
         };
-        
+
         // Cache successful response
         await this.cacheService.set(cacheKey, combinedResponse);
         this.logger.debug(`Combined daily data from ${exnessAccountIds.length} EXNESS accounts`);
@@ -1245,7 +1257,7 @@ export class MyfxbookService {
         );
 
         const allResponses = await Promise.all(allGainPromises);
-        
+
         // Sum gains from all accounts
         let totalGain = 0;
         allResponses.forEach(response => {
