@@ -9,6 +9,7 @@ import {
 import { LoginDto } from './dto/login.dto';
 import { calculateDifference, calculateDifferences, validateAndDecodeSession } from 'src/common/utils/session.utils';
 import { CacheService } from '../cache/cache.service';
+import { DEFAULT_ACCOUNT, EXNESS_ACCOUNT } from 'src/constant/constant';
 
 /**
  * Interface for session metadata stored in Redis
@@ -187,6 +188,23 @@ export class MyfxbookService {
   }
 
   /**
+   * Check if accountId is "default"
+   * @param accountId - Account ID to check
+   * @returns true if accountId is "default" (case-insensitive)
+   */
+  private isDefaultAccount(accountId: string): boolean {
+    return accountId?.toLowerCase() === 'default';
+  }
+
+  /**
+   * Get all EXNESS account IDs from constant
+   * @returns Array of EXNESS account IDs
+   */
+  private getExnessAccountIds(): string[] {
+    return EXNESS_ACCOUNT.map(String);
+  }
+
+  /**
    * Authenticate with Myfxbook API
    * @param loginDto - Login credentials (optional, uses env vars if not provided)
    * @returns Session token
@@ -320,16 +338,18 @@ export class MyfxbookService {
         return cached;
       }
 
-      const response:any = await this.makeAuthenticatedRequest(
+      const response: any = await this.makeAuthenticatedRequest(
         'get-my-accounts.json',
         resolvedSession,
       );
-      // console.log("response", response)
+
       const accounts = response?.accounts || [];
 
       const filteredAccounts = accounts.filter((item) =>
-        item.name?.toLowerCase().includes("risk")
+        EXNESS_ACCOUNT.includes(String(item.id))
       );
+
+      const finalResult = [...filteredAccounts, DEFAULT_ACCOUNT];
 
       if (response.error) {
         const errorMessage = response.message || 'Failed to fetch accounts';
@@ -349,7 +369,7 @@ export class MyfxbookService {
         this.logger.warn('Failed to cache response in Redis - data will not be cached');
       }
 
-      return filteredAccounts;
+      return finalResult;
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
@@ -363,7 +383,7 @@ export class MyfxbookService {
 
   /**
    * Get aggregated statistics for all user accounts
-   * @param session - Session token
+   * @param accountId - Account ID or "default" to aggregate all EXNESS accounts
    * @returns Aggregated account statistics (total balance, total profit, average monthly gain)
    */
   async getAggregatedAccounts(accountId: string): Promise<{
@@ -383,8 +403,69 @@ export class MyfxbookService {
         return cached;
       }
 
+      // If accountId is "default", aggregate all EXNESS accounts
+      if (accountId?.toLowerCase() === 'default') {
+        // Get raw accounts from API (not filtered)
+        const resolvedSessionForApi = await this.resolveSession();
+        const rawResponse: any = await this.makeAuthenticatedRequest(
+          'get-my-accounts.json',
+          resolvedSessionForApi,
+        );
+
+        if (rawResponse.error) {
+          const errorMessage = rawResponse.message || 'Failed to fetch accounts';
+          throw new HttpException(
+            `Failed to fetch accounts: ${errorMessage}`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+
+        const allAccounts = rawResponse?.accounts || [];
+        
+        // Filter EXNESS accounts only
+        const exnessAccounts = allAccounts.filter((account: any) =>
+          EXNESS_ACCOUNT.includes(String(account.id))
+        );
+
+        if (exnessAccounts.length === 0) {
+          this.logger.warn('No EXNESS accounts found in API response');
+          return {
+            totalBalance: 0,
+            totalProfit: 0,
+            averageMonthlyReturn: 0,
+          };
+        }
+
+        // Calculate totals and averages for EXNESS accounts
+        let totalBalance = 0;
+        let totalProfit = 0;
+        let totalMonthlyReturn = 0;
+
+        exnessAccounts.forEach((account: any) => {
+          totalBalance += Number(account.balance ?? 0);
+          totalProfit += Number(account.profit ?? 0);
+          totalMonthlyReturn += Number(account.monthly ?? 0);
+        });
+
+        const averageMonthlyReturn = exnessAccounts.length > 0 
+          ? totalMonthlyReturn / exnessAccounts.length 
+          : 0;
+
+        const result = {
+          totalBalance: Number(totalBalance.toFixed(2)),
+          totalProfit: Number(totalProfit.toFixed(2)),
+          averageMonthlyReturn: Number(averageMonthlyReturn.toFixed(2)),
+        };
+
+        // Cache successful response
+        await this.cacheService.set(cacheKey, result);
+        this.logger.debug(`Aggregated ${exnessAccounts.length} EXNESS accounts for default calculation`);
+        return result;
+      }
+
+      // Original flow: find specific account by ID
       const accountsResponse = await this.getMyAccounts(resolvedSession);
-   
+
       const accounts = accountsResponse || [];
       // Find the account object with matching ID
       const account = accounts.find((acc: any) => acc.id == accountId);
@@ -435,6 +516,56 @@ export class MyfxbookService {
         return cached;
       }
 
+      // Handle "default" accountId - combine history from all EXNESS accounts
+      if (this.isDefaultAccount(accountId)) {
+        const exnessAccountIds = this.getExnessAccountIds();
+        const allHistoryPromises = exnessAccountIds.map(id =>
+          this.makeAuthenticatedRequest(
+            'get-history.json',
+            resolvedSession,
+            { id },
+          ).catch(err => {
+            this.logger.warn(`Failed to fetch history for account ${id}: ${err.message}`);
+            return { history: [], data: [], trades: [] };
+          })
+        );
+
+        const allResponses = await Promise.all(allHistoryPromises);
+        
+        // Combine all history records
+        let combinedHistory: any[] = [];
+        let combinedData: any[] = [];
+        let combinedTrades: any[] = [];
+
+        allResponses.forEach((response: any) => {
+          if (Array.isArray(response.history)) {
+            combinedHistory = [...combinedHistory, ...response.history];
+          }
+          if (Array.isArray(response.data)) {
+            combinedData = [...combinedData, ...response.data];
+          }
+          if (Array.isArray(response.trades)) {
+            combinedTrades = [...combinedTrades, ...response.trades];
+          }
+          if (Array.isArray(response)) {
+            combinedHistory = [...combinedHistory, ...response];
+          }
+        });
+
+        const combinedResponse = {
+          ...allResponses[0],
+          history: combinedHistory.length > 0 ? combinedHistory : undefined,
+          data: combinedData.length > 0 ? combinedData : undefined,
+          trades: combinedTrades.length > 0 ? combinedTrades : undefined,
+        };
+
+        // Cache successful response
+        await this.cacheService.set(cacheKey, combinedResponse);
+        this.logger.debug(`Combined history from ${exnessAccountIds.length} EXNESS accounts`);
+        return combinedResponse;
+      }
+
+      // Original flow: get history for specific account
       const response = await this.makeAuthenticatedRequest(
         'get-history.json',
         resolvedSession,
@@ -549,6 +680,7 @@ export class MyfxbookService {
         return cached;
       }
 
+      // getHistory already handles "default" accountId by combining histories
       const historyResponse = await this.getHistory(resolvedSession, accountId);
 
       // Try to find history records in different possible locations
@@ -873,6 +1005,70 @@ export class MyfxbookService {
         return cached;
       }
 
+      // Handle "default" accountId - combine daily data from all EXNESS accounts
+      if (this.isDefaultAccount(accountId)) {
+        const exnessAccountIds = this.getExnessAccountIds();
+        const params: Record<string, any> = {
+          start: startDate,
+          end: endDate,
+        };
+
+        const allDailyPromises = exnessAccountIds.map(id =>
+          this.makeAuthenticatedRequest(
+            'get-data-daily.json',
+            resolvedSession,
+            { ...params, id },
+          ).catch(err => {
+            this.logger.warn(`Failed to fetch daily data for account ${id}: ${err.message}`);
+            return { dataDaily: [], data: [], records: [], error: false };
+          })
+        );
+
+        const allResponses: any[] = await Promise.all(allDailyPromises);
+        
+        // Combine all daily records
+        let combinedDataDaily: any[] = [];
+        let totalProfit = 0;
+
+        allResponses.forEach((response: any) => {
+          if (Array.isArray(response.dataDaily)) {
+            combinedDataDaily = [...combinedDataDaily, ...response.dataDaily];
+          } else if (Array.isArray(response.data)) {
+            combinedDataDaily = [...combinedDataDaily, ...response.data];
+          } else if (Array.isArray(response.records)) {
+            combinedDataDaily = [...combinedDataDaily, ...response.records];
+          }
+
+          // Sum total profit if available
+          if (response.totalProfit !== undefined) {
+            totalProfit += Number(response.totalProfit) || 0;
+          }
+        });
+
+        // Calculate total profit from all records
+        if (combinedDataDaily.length > 0) {
+          combinedDataDaily.forEach((recordArr: any) => {
+            const record = Array.isArray(recordArr) ? recordArr[0] : recordArr;
+            if (record && (record.profit !== undefined || record.profite !== undefined)) {
+              totalProfit += Number(record.profit ?? record.profite ?? 0) || 0;
+            }
+          });
+        }
+
+        const combinedResponse = {
+          ...allResponses[0],
+          dataDaily: combinedDataDaily,
+          totalProfit: Number(totalProfit.toFixed(2)),
+          error: false,
+        };
+        
+        // Cache successful response
+        await this.cacheService.set(cacheKey, combinedResponse);
+        this.logger.debug(`Combined daily data from ${exnessAccountIds.length} EXNESS accounts`);
+        return combinedResponse;
+      }
+
+      // Original flow: get daily data for specific account
       const params: Record<string, any> = {
         id: accountId,
       };
@@ -1029,6 +1225,45 @@ export class MyfxbookService {
         return cached;
       }
 
+      // Handle "default" accountId - sum gains from all EXNESS accounts
+      if (this.isDefaultAccount(accountId)) {
+        const exnessAccountIds = this.getExnessAccountIds();
+        const params: Record<string, any> = {
+          start: startDate,
+          end: endDate,
+        };
+
+        const allGainPromises = exnessAccountIds.map(id =>
+          this.makeAuthenticatedRequest(
+            'get-gain.json',
+            resolvedSession,
+            { ...params, id },
+          ).catch(err => {
+            this.logger.warn(`Failed to fetch gain for account ${id}: ${err.message}`);
+            return { error: false, gain: 0 };
+          })
+        );
+
+        const allResponses = await Promise.all(allGainPromises);
+        
+        // Sum gains from all accounts
+        let totalGain = 0;
+        allResponses.forEach(response => {
+          if (!response.error) {
+            const gain = this.extractGainValue(response);
+            totalGain += gain;
+          }
+        });
+
+        const result = { gain: totalGain, startDate, endDate };
+
+        // Cache successful response
+        await this.cacheService.set(cacheKey, result);
+        this.logger.debug(`Combined gain from ${exnessAccountIds.length} EXNESS accounts`);
+        return result;
+      }
+
+      // Original flow: get gain for specific account
       const params: Record<string, any> = {
         id: accountId,
         start: startDate,
