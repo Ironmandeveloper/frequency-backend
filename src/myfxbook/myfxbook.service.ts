@@ -371,9 +371,9 @@ export class MyfxbookService {
         );
       }
 
-      // Cache successful response
+      // Cache successful response - cache finalResult instead of filteredAccounts
       this.logger.debug(`Attempting to cache response for key: ${cacheKey}`);
-      const cacheSuccess = await this.cacheService.set(cacheKey, filteredAccounts);
+      const cacheSuccess = await this.cacheService.set(cacheKey, finalResult);
 
       if (cacheSuccess) {
         this.logger.debug('Response successfully cached in Redis');
