@@ -815,7 +815,7 @@ export class MyfxbookService {
         return cached;
       }
 
-      const dataDaily = await this.getDataDaily(
+      const dataDaily = await this.getDataDailyComparision(
         resolvedSession,
         accountId,
         startDate,
@@ -1103,6 +1103,169 @@ export class MyfxbookService {
     }
   }
 
+  async getDataDailyComparision(
+    session: string | undefined,
+    accountId: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<any> {
+    try {
+      const resolvedSession = await this.resolveSession(session);
+      this.validateAccountId(accountId);
+
+      // Endpoint-based cache key
+      const cacheKey = this.cacheService.generateKey('endpoint:get-data-daily', accountId, startDate, endDate);
+      const cached = await this.cacheService.get<any>(cacheKey);
+
+      if (cached) {
+        this.logger.debug('Cache hit for endpoint:get-data-daily');
+        return cached;
+      }
+
+      // Handle "default" accountId - combine daily data from all EXNESS accounts
+      if (this.isDefaultAccount(accountId)) {
+        const exnessAccountIds = this.getExnessAccountIds();
+        const params: Record<string, any> = {
+          start: startDate,
+          end: endDate,
+        };
+
+        const allDailyPromises = exnessAccountIds.map(id =>
+          this.makeAuthenticatedRequest(
+            'get-data-daily.json',
+            resolvedSession,
+            { ...params, id },
+          ).catch(err => {
+            this.logger.warn(`Failed to fetch daily data for account ${id}: ${err.message}`);
+            return { dataDaily: [], data: [], records: [], error: false };
+          })
+        );
+
+        const allResponses: any[] = await Promise.all(allDailyPromises);
+
+        // Combine all daily records
+        let combinedDataDaily: any[] = [];
+        let totalProfit = 0;
+
+        allResponses.forEach((response: any) => {
+          if (Array.isArray(response.dataDaily)) {
+            combinedDataDaily = [...combinedDataDaily, ...response.dataDaily];
+          } else if (Array.isArray(response.data)) {
+            combinedDataDaily = [...combinedDataDaily, ...response.data];
+          } else if (Array.isArray(response.records)) {
+            combinedDataDaily = [...combinedDataDaily, ...response.records];
+          }
+
+          // Sum total profit if available
+          if (response.totalProfit !== undefined) {
+            totalProfit += Number(response.totalProfit) || 0;
+          }
+        });
+
+        // Calculate total profit from all records
+        if (combinedDataDaily.length > 0) {
+          combinedDataDaily.forEach((recordArr: any) => {
+            const record = Array.isArray(recordArr) ? recordArr[0] : recordArr;
+            if (record && (record.profit !== undefined || record.profite !== undefined)) {
+              totalProfit += Number(record.profit ?? record.profite ?? 0) || 0;
+            }
+          });
+
+          // Create cumulative profit series
+          combinedDataDaily = this.createCumulativeProfitSeries(combinedDataDaily);
+        }
+
+        const combinedResponse = {
+          ...allResponses[0],
+          dataDaily: combinedDataDaily,
+          totalProfit: Number(totalProfit.toFixed(2)),
+          error: false,
+        };
+
+        // Cache successful response
+        await this.cacheService.set(cacheKey, combinedResponse);
+        this.logger.debug(`Combined daily data from ${exnessAccountIds.length} EXNESS accounts`);
+        return combinedResponse;
+      }
+
+      // Original flow: get daily data for specific account
+      const params: Record<string, any> = {
+        id: accountId,
+      };
+
+      if (startDate) {
+        params.start = startDate;
+      }
+
+      if (endDate) {
+        params.end = endDate;
+      }
+
+      const response: any = await this.makeAuthenticatedRequest(
+        'get-data-daily.json',
+        resolvedSession,
+        params,
+      );
+
+      if (response.error) {
+        const errorMessage = response.message || 'Failed to fetch daily data';
+        throw new HttpException(
+          `Failed to fetch daily data: ${errorMessage}`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // Calculate total profit from all records
+      let totalProfit = 0;
+
+      // Try to find records in different possible locations in the response
+      // The response might have data in response.data, response.records, or directly as an array
+      let records: any[] = [];
+
+      if (Array.isArray(response.dataDaily)) {
+        records = response.dataDaily;
+      }
+
+      // Sum up all profit values from records
+      if (Array.isArray(records) && records.length > 0) {
+        records.forEach((recordArr: any) => {
+          const record = recordArr[0]; // extract object from inner array
+
+          if (!record) return;
+
+          const profitValue =
+            record.profit !== undefined ? record.profit : record.profite;
+
+          if (profitValue !== undefined && profitValue !== null) {
+            totalProfit += Number(profitValue) || 0;
+          }
+        });
+
+        // Create cumulative profit series
+        records = this.createCumulativeProfitSeries(records);
+        response.dataDaily = records;
+      }
+
+      // Add totalProfite to the response
+      const result = {
+        ...response,
+        totalProfit: Number(totalProfit.toFixed(2)),
+      };
+
+      // Cache successful response
+      await this.cacheService.set(cacheKey, result);
+      return result;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        `Failed to fetch daily data: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   /**
    * Format date to YYYY-MM-DD format
    */
@@ -1357,7 +1520,7 @@ export class MyfxbookService {
 
       const result = {
         today: {
-          differencePercent :todayGain.gain,
+          differencePercent: todayGain.gain,
         },
         thisWeek: {
           differencePercent: thisWeekGain.gain,
@@ -1366,7 +1529,7 @@ export class MyfxbookService {
           differencePercent: thisMonthGain.gain,
         },
         thisYear: {
-          differencePercent :thisYearGain.gain,
+          differencePercent: thisYearGain.gain,
         },
       };
 
@@ -1382,6 +1545,73 @@ export class MyfxbookService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  /**
+   * Create cumulative profit series from records
+   * Index 0 remains as is, index 1+ have cumulative profit values
+   */
+  private createCumulativeProfitSeries(records: any[]): any[] {
+    if (!Array.isArray(records) || records.length === 0) {
+      return records;
+    }
+
+    // Create a deep copy to avoid mutating the original
+    const processedRecords = records.map(recordArr => {
+      if (Array.isArray(recordArr)) {
+        // If it's an array like [record], create a new array with a copy of the record
+        return [{ ...recordArr[0] }];
+      } else {
+        // If it's a direct object, create a copy
+        return { ...recordArr };
+      }
+    });
+
+    let cumulativeProfit = 0;
+
+    for (let i = 0; i < processedRecords.length; i++) {
+      const recordArr = processedRecords[i];
+      const record = Array.isArray(recordArr) ? recordArr[0] : recordArr;
+
+      if (!record) {
+        continue;
+      }
+
+      // Get current profit value (original value, not cumulative)
+      const currentProfit = record.profit !== undefined 
+        ? Number(record.profit) || 0 
+        : record.profite !== undefined 
+          ? Number(record.profite) || 0 
+          : 0;
+
+      if (i === 0) {
+        // Index 0: keep as is, but store the profit value for next iteration
+        cumulativeProfit = currentProfit;
+      } else {
+        // Index 1+: sum with previous cumulative value
+        cumulativeProfit += currentProfit;
+        
+        // Update the profit field in the record
+        if (Array.isArray(recordArr)) {
+          // If record is in array format [record], update the record inside
+          if (recordArr[0]) {
+            recordArr[0].profit = Number(cumulativeProfit.toFixed(2));
+            // Also update profite if it exists
+            if (recordArr[0].profite !== undefined) {
+              recordArr[0].profite = Number(cumulativeProfit.toFixed(2));
+            }
+          }
+        } else {
+          // If record is direct object, update it directly
+          record.profit = Number(cumulativeProfit.toFixed(2));
+          if (record.profite !== undefined) {
+            record.profite = Number(cumulativeProfit.toFixed(2));
+          }
+        }
+      }
+    }
+
+    return processedRecords;
   }
 
   /**

@@ -130,7 +130,7 @@ export class MyfxbookController {
   ): Promise<BaseResponseDto<any>> {
     try {
 
-      const dataDailyData = await this.myfxbookService.getDataDaily(
+      const dataDailyData = await this.myfxbookService.getDataDailyComparision(
         undefined,
         accountId,
         startDate,
