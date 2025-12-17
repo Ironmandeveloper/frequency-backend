@@ -907,73 +907,22 @@ export class MyfxbookService {
           ? (endBalance - startBalance) / endBalance
           : 0;
 
-      // Calculate drawdown: find peak balance, then find trough (lowest point after peak)
-      let peakBalance = 0;
-      let peakIndex = -1;
+      const resolvedSessionForApi = await this.resolveSession();
+      const rawResponse: any = await this.makeAuthenticatedRequest(
+        'get-my-accounts.json',
+        resolvedSessionForApi,
+      );
 
-      // Find the peak balance (highest balance in all records)
-      normalized.forEach((record, index) => {
-        const balance =
-          record.balance !== undefined && record.balance !== null
-            ? Number(record.balance) || 0
-            : 0;
-        if (balance > peakBalance) {
-          peakBalance = balance;
-          peakIndex = index;
-        }
-      });
+      const allAccounts = rawResponse?.accounts || [];
 
-      // Find the trough (lowest balance after the peak, before recovery)
-      let troughBalance = peakBalance;
-
-      if (peakIndex >= 0 && peakIndex < normalized.length - 1) {
-        let minBalanceAfterPeak = peakBalance;
-        let foundDrop = false;
-
-        // Track the minimum balance after the peak
-        for (let i = peakIndex + 1; i < normalized.length; i++) {
-          const balance =
-            normalized[i].balance !== undefined &&
-              normalized[i].balance !== null
-              ? Number(normalized[i].balance) || 0
-              : 0;
-
-          // Check if balance dropped from peak
-          if (balance < peakBalance) {
-            foundDrop = true;
-          }
-
-          // If balance dropped, track the minimum (trough)
-          if (foundDrop && balance < minBalanceAfterPeak) {
-            minBalanceAfterPeak = balance;
-          }
-
-          // If balance recovers (increases) after a drop, we've found the trough
-          // The trough is the lowest point before recovery
-          if (
-            foundDrop &&
-            minBalanceAfterPeak < peakBalance &&
-            balance > minBalanceAfterPeak
-          ) {
-            // Recovery has started, trough is the minimum we found
-            troughBalance = minBalanceAfterPeak;
-            break;
-          }
-        }
-
-        // If we found a drop but no recovery yet, use the minimum found
-        if (foundDrop && minBalanceAfterPeak < peakBalance) {
-          troughBalance = minBalanceAfterPeak;
-        }
-      }
-
-      // Calculate drawdown: (peak - trough) / peak * 100
-      const drawdown =
-        peakBalance !== 0 ? (peakBalance - troughBalance) / peakBalance : 0;
+      // Filter EXNESS accounts only
+      const exnessAccount = allAccounts.filter((account: any) =>
+        accountId == account.id
+      );
 
       const result = {
         profitabilityPercent: Number((profitability * 100).toFixed(2)),
-        drawdownPercent: Number((drawdown * 100).toFixed(2)),
+        drawdownPercent: Number(exnessAccount?.[0]?.drawdown),
       };
 
       // Cache successful response
@@ -1355,55 +1304,39 @@ export class MyfxbookService {
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
 
-      // Today vs Yesterday
+      // Today
       const todayStr = this.formatDate(today);
-      const yesterdayStr = this.formatDate(yesterday);
-      const [todayGain, yesterdayGain] = await Promise.all([
+      const [todayGain] = await Promise.all([
         this.getGainForPeriod(resolvedSession, accountId, todayStr, todayStr),
-        this.getGainForPeriod(resolvedSession, accountId, yesterdayStr, yesterdayStr),
       ]);
 
-      // This week vs Previous week
+      // This week
       const thisWeekStart = this.getStartOfWeek(today);
       const thisWeekEnd = new Date(today);
       const previousWeekEnd = new Date(thisWeekStart);
       previousWeekEnd.setDate(previousWeekEnd.getDate() - 1);
-      const previousWeekStart = this.getStartOfWeek(previousWeekEnd);
 
-      const [thisWeekGain, previousWeekGain] = await Promise.all([
+      const [thisWeekGain] = await Promise.all([
         this.getGainForPeriod(
           resolvedSession,
           accountId,
           this.formatDate(thisWeekStart),
           this.formatDate(thisWeekEnd),
         ),
-        this.getGainForPeriod(
-          resolvedSession,
-          accountId,
-          this.formatDate(previousWeekStart),
-          this.formatDate(previousWeekEnd),
-        ),
       ]);
 
-      // This month vs Previous month
+      // This month 
       const thisMonthStart = this.getStartOfMonth(today);
       const thisMonthEnd = new Date(today);
       const previousMonthEnd = new Date(thisMonthStart);
       previousMonthEnd.setDate(previousMonthEnd.getDate() - 1);
-      const previousMonthStart = this.getStartOfMonth(previousMonthEnd);
 
-      const [thisMonthGain, previousMonthGain] = await Promise.all([
+      const [thisMonthGain] = await Promise.all([
         this.getGainForPeriod(
           resolvedSession,
           accountId,
           this.formatDate(thisMonthStart),
           this.formatDate(thisMonthEnd),
-        ),
-        this.getGainForPeriod(
-          resolvedSession,
-          accountId,
-          this.formatDate(previousMonthStart),
-          this.formatDate(previousMonthEnd),
         ),
       ]);
 
@@ -1412,40 +1345,28 @@ export class MyfxbookService {
       const thisYearEnd = new Date(today);
       const previousYearEnd = new Date(thisYearStart);
       previousYearEnd.setDate(previousYearEnd.getDate() - 1);
-      const previousYearStart = this.getStartOfYear(previousYearEnd);
 
-      const [thisYearGain, previousYearGain] = await Promise.all([
+      const [thisYearGain] = await Promise.all([
         this.getGainForPeriod(
           resolvedSession,
           accountId,
           this.formatDate(thisYearStart),
           this.formatDate(thisYearEnd),
         ),
-        this.getGainForPeriod(
-          resolvedSession,
-          accountId,
-          this.formatDate(previousYearStart),
-          this.formatDate(previousYearEnd),
-        ),
       ]);
-
-      const todayDiff = calculateDifference(todayGain, yesterdayGain);
-      const weekDiff = calculateDifference(thisWeekGain, previousWeekGain);
-      const monthDiff = calculateDifference(thisMonthGain, previousMonthGain);
-      const yearDiff = calculateDifference(thisYearGain, previousYearGain);
 
       const result = {
         today: {
-          ...todayDiff,
+          differencePercent :todayGain.gain,
         },
         thisWeek: {
-          ...weekDiff,
+          differencePercent: thisWeekGain.gain,
         },
         thisMonth: {
-          ...monthDiff,
+          differencePercent: thisMonthGain.gain,
         },
         thisYear: {
-          ...yearDiff,
+          differencePercent :thisYearGain.gain,
         },
       };
 
