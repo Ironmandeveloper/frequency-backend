@@ -1447,10 +1447,10 @@ export class MyfxbookService {
   }
 
   /**
-   * Get daily data comparisons for multiple periods (today/yesterday, this week/previous week, etc.)
+   * Get daily data comparisons for multiple periods (today, this week, this month, this year)
    * @param session - Session token
    * @param accountId - Account ID
-   * @returns Daily data comparison for all periods with profit and pips sums
+   * @returns Daily data for all periods with profit and pips sums
    */
   async getDailyDataComparisons(
     session: string | undefined,
@@ -1458,7 +1458,6 @@ export class MyfxbookService {
   ) {
     try {
       const resolvedSession = await this.resolveSession(session);
-      const decoded = validateAndDecodeSession(resolvedSession)
       this.validateAccountId(accountId);
 
       const cacheKey = this.cacheService.generateKey('myfxbook:daily-comparisons', resolvedSession, accountId);
@@ -1470,55 +1469,57 @@ export class MyfxbookService {
       }
 
       const now = new Date();
-      const today = new Date(now.setHours(0, 0, 0, 0));
+      const today = new Date(now);
+      today.setHours(0, 0, 0, 0);
 
-      // Generic function for comparing two periods
-      const comparePeriods = async (startA: any, endA: any, startB: any, endB: any) => {
-        const [dataA, dataB] = await Promise.all([
-          this.getDataDaily(resolvedSession, accountId, this.formatDate(startA), this.formatDate(endA)),
-          this.getDataDaily(resolvedSession, accountId, this.formatDate(startB), this.formatDate(endB)),
-        ]);
-
-        return calculateDifferences(
-          this.extractProfitAndPips(dataA),
-          this.extractProfitAndPips(dataB),
+      // Helper function to get profit and pips for a single period
+      const getPeriodData = async (startDate: Date, endDate: Date) => {
+        const data = await this.getDataDaily(
+          resolvedSession,
+          accountId,
+          this.formatDate(startDate),
+          this.formatDate(endDate),
         );
+        return this.extractProfitAndPips(data);
       };
 
-      // Today vs Yesterday
-      const yesterday = new Date(today);
-      yesterday.setDate(today.getDate() - 1);
-      const todayDiff = await comparePeriods(today, today, yesterday, yesterday);
+      // Today - return today's profit and pips
+      const todayData = await getPeriodData(today, today);
 
-      // Week comparison
+      // This week - return current week's sum of profit and pips
       const thisWeekStart = this.getStartOfWeek(today);
       const thisWeekEnd = today;
-      const prevWeekEnd = new Date(thisWeekStart);
-      prevWeekEnd.setDate(prevWeekEnd.getDate() - 1);
-      const prevWeekStart = this.getStartOfWeek(prevWeekEnd);
-      const weekDiff = await comparePeriods(thisWeekStart, thisWeekEnd, prevWeekStart, prevWeekEnd);
+      const thisWeekData = await getPeriodData(thisWeekStart, thisWeekEnd);
 
-      // Month comparison
+      // This month - return current month's sum of profit and pips
       const thisMonthStart = this.getStartOfMonth(today);
       const thisMonthEnd = today;
-      const prevMonthEnd = new Date(thisMonthStart);
-      prevMonthEnd.setDate(prevMonthEnd.getDate() - 1);
-      const prevMonthStart = this.getStartOfMonth(prevMonthEnd);
-      const monthDiff = await comparePeriods(thisMonthStart, thisMonthEnd, prevMonthStart, prevMonthEnd);
+      const thisMonthData = await getPeriodData(thisMonthStart, thisMonthEnd);
 
-      // Year comparison
+      // This year - return current year's sum of profit and pips
       const thisYearStart = this.getStartOfYear(today);
       const thisYearEnd = today;
-      const prevYearEnd = new Date(thisYearStart);
-      prevYearEnd.setDate(prevYearEnd.getDate() - 1);
-      const prevYearStart = this.getStartOfYear(prevYearEnd);
-      const yearDiff = await comparePeriods(thisYearStart, thisYearEnd, prevYearStart, prevYearEnd);
+      const thisYearData = await getPeriodData(thisYearStart, thisYearEnd);
 
+      // Keep the same response format with profitDifference and pipsDifference keys
+      // but populate them with actual profit and pips values
       const result = {
-        today: todayDiff,
-        thisWeek: weekDiff,
-        thisMonth: monthDiff,
-        thisYear: yearDiff,
+        today: {
+          profitDifference: todayData.totalProfit,
+          pipsDifference: todayData.totalPips,
+        },
+        thisWeek: {
+          profitDifference: thisWeekData.totalProfit,
+          pipsDifference: thisWeekData.totalPips,
+        },
+        thisMonth: {
+          profitDifference: thisMonthData.totalProfit,
+          pipsDifference: thisMonthData.totalPips,
+        },
+        thisYear: {
+          profitDifference: thisYearData.totalProfit,
+          pipsDifference: thisYearData.totalPips,
+        },
       };
 
       // Cache successful response
