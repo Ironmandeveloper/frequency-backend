@@ -345,12 +345,13 @@ export class MyfxbookService {
 
       const accounts = response?.accounts || [];
 
-      const filteredAccounts = accounts.filter((item) =>
-        EXNESS_ACCOUNT.includes(String(item.id))
-      );
+      // const filteredAccounts = accounts.filter((item) =>
+      //   EXNESS_ACCOUNT.includes(String(item.id))
+      // );
 
       // Add default account
-      let finalResult = [...filteredAccounts, DEFAULT_ACCOUNT];
+      // let finalResult = [...filteredAccounts, DEFAULT_ACCOUNT];
+      let finalResult = [...accounts, DEFAULT_ACCOUNT];
 
       // Update name if ID matches LOW_RISK_ACCOUNT
       finalResult = finalResult.map((item) => {
@@ -435,43 +436,43 @@ export class MyfxbookService {
         const allAccounts = rawResponse?.accounts || [];
 
         // Filter EXNESS accounts only
-        const exnessAccounts = allAccounts.filter((account: any) =>
-          EXNESS_ACCOUNT.includes(String(account.id))
-        );
+        // const exnessAccounts = allAccounts.filter((account: any) =>
+        //   EXNESS_ACCOUNT.includes(String(account.id))
+        // );
 
-        if (exnessAccounts.length === 0) {
-          this.logger.warn('No EXNESS accounts found in API response');
-          return {
-            totalBalance: 0,
-            totalProfit: 0,
-            averageMonthlyReturn: 0,
-          };
-        }
+        // if (exnessAccounts.length === 0) {
+        //   this.logger.warn('No EXNESS accounts found in API response');
+        //   return {
+        //     totalBalance: 0,
+        //     totalProfit: 0,
+        //     averageMonthlyReturn: 0,
+        //   };
+        // }
 
         // Calculate totals and averages for EXNESS accounts
         let totalBalance = 0;
         let totalProfit = 0;
         let totalMonthlyReturn = 0;
 
-        exnessAccounts.forEach((account: any) => {
+        allAccounts.forEach((account: any) => {
           totalBalance += Number(account.balance ?? 0);
           totalProfit += Number(account.profit ?? 0);
           totalMonthlyReturn += Number(account.monthly ?? 0);
         });
 
-        const averageMonthlyReturn = exnessAccounts.length > 0
-          ? totalMonthlyReturn / exnessAccounts.length
-          : 0;
+        // const averageMonthlyReturn = allAccounts.length > 0
+        //   ? totalMonthlyReturn / allAccounts.length
+        //   : 0;
 
         const result = {
           totalBalance: Number(totalBalance.toFixed(2)),
           totalProfit: Number(totalProfit.toFixed(2)),
-          averageMonthlyReturn: Number(averageMonthlyReturn.toFixed(2)),
+          averageMonthlyReturn: Number(totalMonthlyReturn.toFixed(2)),
         };
 
         // Cache successful response
         await this.cacheService.set(cacheKey, result);
-        this.logger.debug(`Aggregated ${exnessAccounts.length} EXNESS accounts for default calculation`);
+        this.logger.debug(`Aggregated ${allAccounts.length} EXNESS accounts for default calculation`);
         return result;
       }
 
@@ -1828,6 +1829,61 @@ export class MyfxbookService {
       const resolvedSession = await this.resolveSession(session);
       this.validateAccountId(accountId);
 
+      // Handle "default" accountId - use cached data from cron job
+      if (this.isDefaultAccount(accountId)) {
+        const defaultCacheKey = 'myfxbook:default-trade-lengths';
+        const cachedDefaultTradeLengths = await this.cacheService.get<{
+          averageTradeLengthMs: number;
+          averageTradeLengthFormatted: string;
+          totalTrades: number;
+        }>(defaultCacheKey);
+
+        // If cache is empty, return 0,0 for all values
+        if (!cachedDefaultTradeLengths) {
+          this.logger.warn('Default trade lengths not found in cache, returning zero values');
+          return {
+            balanceProfitability: {
+              profitabilityPercent: 0,
+              drawdownPercent: 0,
+            },
+            averageTradeLength: {
+              averageTradeLengthMs: 0,
+              averageTradeLengthFormatted: '0s',
+              totalTrades: 0,
+            },
+          };
+        }
+
+        // Get balance profitability for default (aggregated from all accounts)
+        let balanceProfitability;
+        try {
+          balanceProfitability = await this.getBalanceProfitability(
+            resolvedSession,
+            accountId,
+            startDate,
+            endDate,
+          );
+        } catch (error) {
+          this.logger.warn(`Failed to get balance profitability for default: ${error.message}`);
+          balanceProfitability = {
+            profitabilityPercent: 0,
+            drawdownPercent: 0,
+          };
+        }
+
+        const result = {
+          balanceProfitability,
+          averageTradeLength: {
+            averageTradeLengthMs: cachedDefaultTradeLengths.averageTradeLengthMs,
+            averageTradeLengthFormatted: cachedDefaultTradeLengths.averageTradeLengthFormatted,
+            totalTrades: cachedDefaultTradeLengths.totalTrades,
+          },
+        };
+
+        return result;
+      }
+
+      // Original flow for specific account IDs
       // Endpoint-based cache key
       const cacheKey = this.cacheService.generateKey('endpoint:get-performance-summary', accountId, startDate, endDate);
       const cached = await this.cacheService.get<{
