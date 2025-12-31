@@ -345,13 +345,13 @@ export class MyfxbookService {
 
       const accounts = response?.accounts || [];
 
-      // const filteredAccounts = accounts.filter((item) =>
-      //   EXNESS_ACCOUNT.includes(String(item.id))
-      // );
+      const filteredAccounts = accounts.filter((item) =>
+        EXNESS_ACCOUNT.includes(String(item.id))
+      );
 
       // Add default account
-      // let finalResult = [...filteredAccounts, DEFAULT_ACCOUNT];
-      let finalResult = [...accounts, DEFAULT_ACCOUNT];
+      let finalResult = [...filteredAccounts, DEFAULT_ACCOUNT];
+      // let finalResult = [...accounts, DEFAULT_ACCOUNT];
 
       // Update name if ID matches LOW_RISK_ACCOUNT
       finalResult = finalResult.map((item) => {
@@ -362,6 +362,20 @@ export class MyfxbookService {
           };
         }
         return item;
+      });
+
+      const ORDER_PRIORITY: Record<string, number> = {
+        "FREQ > LOW RISK": 1,
+        "FREQ > MEDIUM RISK": 2,
+        "FREQ > HIGH RISK": 3,
+        "default": 4,
+      };
+
+      finalResult = finalResult.sort((a, b) => {
+        const aKey = a.id === "default" ? "default" : a.name;
+        const bKey = b.id === "default" ? "default" : b.name;
+
+        return (ORDER_PRIORITY[aKey] ?? 99) - (ORDER_PRIORITY[bKey] ?? 99);
       });
 
       if (response.error) {
@@ -1579,10 +1593,10 @@ export class MyfxbookService {
       }
 
       // Get current profit value (original value, not cumulative)
-      const currentProfit = record.profit !== undefined 
-        ? Number(record.profit) || 0 
-        : record.profite !== undefined 
-          ? Number(record.profite) || 0 
+      const currentProfit = record.profit !== undefined
+        ? Number(record.profit) || 0
+        : record.profite !== undefined
+          ? Number(record.profite) || 0
           : 0;
 
       if (i === 0) {
@@ -1591,7 +1605,7 @@ export class MyfxbookService {
       } else {
         // Index 1+: sum with previous cumulative value
         cumulativeProfit += currentProfit;
-        
+
         // Update the profit field in the record
         if (Array.isArray(recordArr)) {
           // If record is in array format [record], update the record inside
